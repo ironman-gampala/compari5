@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Compari5
 
-## Getting Started
+Personal quick-commerce price compare for **Blinkit**, **Swiggy Instamart**, **Zepto**, and **BigBasket**.
 
-First, run the development server:
+No site accounts. No checkout. Free to run locally.
+
+## Quick start
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+1. **Connect Swiggy** / **Connect Zepto** (phone OTP in browser, once)
+2. Type an area (Blinkit uses this pin)
+3. Search a product → compare → add to list → see totals
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Area search (maps)
 
-## Learn More
+Uses **Google Places Autocomplete** + **Place Details** (Geocoding as fallback).
 
-To learn more about Next.js, take a look at the following resources:
+1. Enable **Places API** and **Geocoding API** in [Google Cloud Console](https://console.cloud.google.com/apis/library)
+2. Put your key in `.env.local` (never commit it):
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+GOOGLE_MAPS_API_KEY=your_key_here
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+3. Restrict the key (Application restrictions → IP for local server, or none while testing)
+4. Restart `npm run dev`
 
-## Deploy on Vercel
+Without a key, we fall back to OpenStreetMap Nominatim.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Auth (OTP)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Platform | How |
+|----------|-----|
+| **Blinkit** | Works without login |
+| **Instamart** | Tries guest search, then **Swiggy MCP OAuth** (OTP) as fallback |
+| **Zepto** | Official Zepto MCP OAuth → OTP |
+| **BigBasket** | Guest web search (no login) |
+
+Instamart uses the **same area pin** as Blinkit and Zepto. With OAuth, Compari5 may auto-create a temporary Swiggy address tagged `Compari5 · …`.
+
+Tokens: `.data/` locally; **Netlify Blobs** when deployed (`NETLIFY=true`).
+
+## Deploy on Netlify
+
+1. Set env vars in Netlify:
+   - `COMPARI5_BASE_URL=https://YOUR-SITE.netlify.app`
+   - `GOOGLE_MAPS_API_KEY=…`
+2. Deploy (uses `@netlify/plugin-nextjs` from `netlify.toml`).
+3. Connect Swiggy / Zepto via OTP on the live URL.
+4. If Swiggy blocks MCP for your domain, Instamart guest search may still fail — OAuth is the supported path to test.
+
+## Stack
+
+- Next.js (App Router) + JavaScript
+- Nominatim geocoding
+- `impit` for Blinkit
+- `@modelcontextprotocol/sdk` for Swiggy / Zepto MCP
+
+## Disclaimer
+
+Unofficial personal tool. Not affiliated with Blinkit, Swiggy, or Zepto.
