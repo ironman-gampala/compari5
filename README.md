@@ -1,36 +1,203 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Compari5
 
-## Getting Started
+Personal India quick-commerce price compare for **Blinkit**, **Swiggy Instamart**, **Zepto**, and **BigBasket**.
 
-First, run the development server:
+Live site: [https://compari5.netlify.app](https://compari5.netlify.app)
+
+No checkout. Unofficial personal / play tool — not affiliated with any of the stores.
+
+---
+
+## How to use
+
+1. Open the site (local or Netlify).
+2. Enter a **delivery area** → **Find area** → pick a suggestion.
+3. Search a product (or tap a staple) → **Compare prices**.
+4. Browse results per store → **Add** items to the basket → compare totals.
+5. **Open** jumps to that product on the store’s website.
+
+**Notes**
+
+- Instamart and Zepto use **shared server tokens** (one OTP login on the server for everyone visiting the live site).
+- Blinkit often works only on your laptop (see integrations below).
+- BigBasket usually works without login on both local and Netlify.
+- If Instamart/Zepto stop returning prices, re-auth on the **live** site (no redeploy):
+  - Swiggy: [https://compari5.netlify.app/api/auth/swiggy](https://compari5.netlify.app/api/auth/swiggy)
+  - Zepto: [https://compari5.netlify.app/api/auth/zepto](https://compari5.netlify.app/api/auth/zepto)
+
+---
+
+## How to set up (local)
+
+### Requirements
+
+- Node.js **20+**
+- npm
+
+No Python venv. Dependencies live in `node_modules` (gitignored).
+
+### Steps
+
+```bash
+git clone https://github.com/ironman-gampala/compari5.git
+cd compari5
+npm install
+cp .env.example .env.local
+```
+
+Edit `.env.local`:
+
+```bash
+# Required for good area search (optional: falls back to OpenStreetMap)
+GOOGLE_MAPS_API_KEY=your_key_here
+
+# For local OAuth redirects while testing Swiggy/Zepto login
+COMPARI5_BASE_URL=http://localhost:3000
+```
+
+For Google Maps:
+
+1. Enable **Places API (New)** and **Geocoding API** in [Google Cloud Console](https://console.cloud.google.com/apis/library).
+2. Create an API key and put it in `.env.local` (never commit `.env.local`).
+
+Run:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+Connect Swiggy / Zepto once via OTP if guest Instamart fails (tokens land in `.data/`, gitignored).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## How to set up (Netlify)
 
-To learn more about Next.js, take a look at the following resources:
+1. Connect this GitHub repo to Netlify **or** keep deploying with CLI:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+   ```bash
+   npx netlify login
+   npx netlify link
+   npx netlify deploy --build --prod
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+2. Site env vars (Builds + Functions + Runtime):
 
-## Deploy on Vercel
+   | Variable | Example |
+   |----------|---------|
+   | `COMPARI5_BASE_URL` | `https://compari5.netlify.app` |
+   | `GOOGLE_MAPS_API_KEY` | your key |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+3. `netlify.toml` already uses `@netlify/plugin-nextjs`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+4. After deploy, complete Swiggy/Zepto OTP on the **live** URLs above. Tokens are stored in **Netlify Blobs** and shared for all visitors.
+
+---
+
+## How each quick-commerce app is integrated
+
+High-level flow:
+
+```
+Browser UI
+  → GET /api/geocode?q=…     (area → lat/lng)
+  → GET /api/search?q=&lat=&lng=&…
+       → Blinkit adapter
+       → Instamart adapter
+       → Zepto adapter
+       → BigBasket adapter
+  → JSON results (independent; one failure does not kill the rest)
+```
+
+### Blinkit
+
+| | |
+|--|--|
+| **Path** | Direct Blinkit web APIs |
+| **Auth** | No user login. Fetches a guest `auth_key`, then search. |
+| **HTTP** | Prefers **Impit** (Chrome-like TLS). Falls back to Undici if Impit is missing. |
+| **Local** | Usually **works** (Impit native binary on your Mac). |
+| **Netlify** | Usually **fails**. Lambda cannot load Impit cleanly; plain fetch gets **403** from Blinkit’s WAF. |
+
+Code: `lib/platforms/blinkit.js`, `lib/http.js`
+
+### Swiggy Instamart
+
+| | |
+|--|--|
+| **Path** | 1) Guest Instamart search attempt → 2) if empty/blocked, **Swiggy MCP** |
+| **Auth** | Swiggy MCP OAuth (phone OTP). Tokens shared site-wide on Netlify. |
+| **MCP** | `https://mcp.swiggy.com/im` via `@modelcontextprotocol/sdk` |
+| **Location** | Creates/reuses a temporary address tagged like `Compari5 · …` for the pin. |
+| **Local** | Guest often blocked; OTP + `.data/` tokens common. |
+| **Netlify** | Guest sometimes works from cloud IPs; otherwise shared Blobs tokens. |
+
+**Note:** Swiggy positions MCP as for builders / agents, not a formal production web API. It can work technically while remaining unsupported / changeable.
+
+Code: `lib/platforms/instamart.js`, `lib/auth/mcp.js`, `app/api/auth/swiggy/*`
+
+### Zepto
+
+| | |
+|--|--|
+| **Path** | **Zepto MCP only** (no guest web scrape in the happy path) |
+| **Auth** | Zepto MCP OAuth (phone OTP). Shared tokens on Netlify. |
+| **MCP** | `https://mcp.zepto.co.in/mcp` |
+| **Location** | `get_location_serviceability` → `select_store` → `search_products` |
+| **Local / Netlify** | Same flow; tokens in `.data/` vs Netlify Blobs. |
+
+Code: `lib/platforms/zepto.js`, `lib/auth/mcp.js`, `app/api/auth/zepto/*`
+
+### BigBasket
+
+| | |
+|--|--|
+| **Path** | Guest visit to bigbasket.com for cookies, then listing API |
+| **Auth** | No user login |
+| **Location** | Lat/lng + pin cookies; city/pin mapped to a warehouse `mid` |
+| **Local / Netlify** | Usually **works** both places |
+
+Code: `lib/platforms/bigbasket.js`
+
+---
+
+## Project layout
+
+```
+app/                  # Next.js UI + API routes
+  api/search/         # Parallel platform search
+  api/geocode/        # Google Places / Geocoding (+ Nominatim fallback)
+  api/auth/           # Swiggy / Zepto OAuth start + callback
+lib/
+  platforms/          # blinkit, instamart, zepto, bigbasket adapters
+  auth/               # MCP OAuth + token store (file / Netlify Blobs)
+  http.js             # Impit + Undici fetch helper
+public/logos/         # Store icons
+netlify.toml          # Next.js on Netlify + COMPARI5_BASE_URL
+```
+
+---
+
+## Scripts
+
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Local Next.js |
+| `npm run build` | Production build |
+| `npm start` | Run production build locally |
+| `npx netlify deploy --build --prod` | Deploy to Netlify |
+
+---
+
+## Security / privacy
+
+- Do **not** commit `.env.local` or `.data/`.
+- Live Instamart/Zepto sessions are **shared** for everyone who uses your Netlify URL.
+- Treat the live link as a personal play tool, not a public product.
+
+---
+
+## Disclaimer
+
+Unofficial. Not affiliated with Blinkit, Swiggy, Zepto, or BigBasket. Store APIs and MCPs can break or block without notice.
