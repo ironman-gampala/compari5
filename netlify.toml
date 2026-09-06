@@ -1,0 +1,8 @@
+[build]
+  command = "npm run build"
+
+[build.environment]
+  COMPARI5_BASE_URL = "https://compari5.netlify.app"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
