@@ -59,7 +59,7 @@ a {
 .app {
   position: relative;
   z-index: 1;
-  width: min(1180px, calc(100% - 2rem));
+  width: min(1280px, calc(100% - 2rem));
   margin: 0 auto;
   padding: 1.75rem 0 4.5rem;
 }
@@ -124,20 +124,28 @@ a {
 }
 
 .auth-card {
-  display: grid;
-  gap: 0.45rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   padding: 0.85rem 0.9rem;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.55);
   border: 1px solid var(--line);
+  min-height: 4.5rem;
+  text-align: center;
 }
 
 .auth-card header {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.55rem;
+  justify-content: center;
+  gap: 0.4rem;
   font-weight: 700;
   font-size: 1rem;
+  line-height: 1.2;
 }
 
 .plat-logo {
@@ -154,19 +162,6 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-}
-
-.auth-card .meta {
-  font-size: 0.92rem;
-  color: var(--muted);
-  line-height: 1.4;
-}
-
-.auth-card .actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-top: 0.15rem;
 }
 
 .dot {
@@ -416,15 +411,16 @@ a {
 
 .layout {
   display: grid;
-  grid-template-columns: 1.55fr 1fr;
-  gap: 1rem;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
   margin-top: 1.15rem;
+  align-items: start;
 }
 
-@media (max-width: 960px) {
-  .layout {
-    grid-template-columns: 1fr;
-  }
+.layout > section,
+.layout > aside {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .section-head {
@@ -458,17 +454,17 @@ a {
 .platform-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.7rem;
-  overflow-x: auto;
+  gap: 0.75rem;
+  width: 100%;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1000px) {
   .platform-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 560px) {
   .platform-grid {
     grid-template-columns: 1fr;
   }
@@ -480,6 +476,12 @@ a {
   padding: 0.85rem;
   background: rgba(255, 255, 255, 0.72);
   min-height: 240px;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  overflow: visible;
+  position: relative;
+  isolation: isolate;
   animation: rise 0.5s ease both;
 }
 
@@ -512,8 +514,11 @@ a {
 
 .platform .err {
   color: var(--danger);
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 .product {
@@ -588,10 +593,26 @@ a {
 
 .product .price-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.4rem;
   margin-top: 0.4rem;
+}
+
+.product .links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.list-panel {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.78);
+  position: static;
+  box-shadow: var(--shadow);
 }
 
 .product .price {
@@ -609,21 +630,6 @@ a {
   text-decoration: line-through;
   margin-left: 0.35rem;
   font-weight: 500;
-}
-
-.product .links {
-  display: flex;
-  gap: 0.3rem;
-}
-
-.list-panel {
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  padding: 1rem;
-  background: rgba(255, 255, 255, 0.78);
-  position: sticky;
-  top: 1rem;
-  box-shadow: var(--shadow);
 }
 
 .list-item {

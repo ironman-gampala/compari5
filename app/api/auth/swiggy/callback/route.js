@@ -16,9 +16,7 @@ export async function GET(request) {
     );
   }
   if (!code) {
-    return NextResponse.redirect(
-      new URL("/?auth_error=missing_code", base)
-    );
+    return NextResponse.redirect(new URL("/?auth_error=missing_code", base));
   }
 
   try {

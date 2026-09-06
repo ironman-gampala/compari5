@@ -59,6 +59,21 @@ function openProduct(url, name, platform) {
   window.open(fallback[platform], "_blank", "noopener,noreferrer");
 }
 
+function friendlyPlatformError(message) {
+  const msg = String(message || "");
+  if (/impit|native bindings|Chrome TLS/i.test(msg)) {
+    return "Blinkit could not load on this server yet. Other stores should still work.";
+  }
+  if (/Blinkit blocked|auth_key failed/i.test(msg)) {
+    return "Blinkit blocked this server request. Try again shortly.";
+  }
+  if (/not signed in|not connected|Sign in/i.test(msg)) {
+    return msg;
+  }
+  if (msg.length > 160) return `${msg.slice(0, 157)}…`;
+  return msg;
+}
+
 function saveAmount(prod) {
   if (prod.mrp && prod.price != null && prod.mrp > prod.price) {
     return prod.mrp - prod.price;
@@ -115,12 +130,6 @@ export default function Home() {
   const [history, setHistory] = useState([]);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
-  const [auth, setAuth] = useState({
-    swiggy: false,
-    zepto: false,
-    swiggySyncedAt: null,
-    zeptoSyncedAt: null,
-  });
   const [pinNote, setPinNote] = useState("");
   const [sortBy, setSortBy] = useState("price_asc");
   const [filters, setFilters] = useState({
@@ -133,21 +142,6 @@ export default function Home() {
   function showToast(msg) {
     setToast(msg);
     setTimeout(() => setToast(""), 2200);
-  }
-
-  async function refreshAuth() {
-    try {
-      const res = await fetch("/api/auth/status");
-      const data = await res.json();
-      setAuth({
-        swiggy: !!data.swiggy,
-        zepto: !!data.zepto,
-        swiggySyncedAt: data.swiggySyncedAt || null,
-        zeptoSyncedAt: data.zeptoSyncedAt || null,
-      });
-    } catch {
-      // ignore
-    }
   }
 
   useEffect(() => {
@@ -164,10 +158,8 @@ export default function Home() {
       if (Array.isArray(pins) && pins.length) setStaples(pins);
       if (Array.isArray(hist)) setHistory(hist.slice(0, 40));
     } catch {}
-    refreshAuth();
     const params = new URLSearchParams(window.location.search);
     if (params.get("connected")) {
-      refreshAuth();
       showToast(
         params.get("connected") === "swiggy"
           ? "Swiggy signed in"
@@ -522,30 +514,6 @@ export default function Home() {
               <img className="plat-logo" src="/logos/instamart.png" alt="" />
               Instamart
             </header>
-            <div className="meta">
-              {auth.swiggy
-                ? `Signed in. Last synced ${formatTime(auth.swiggySyncedAt)}.`
-                : "Sign in with Swiggy so Instamart prices can load for your area."}
-            </div>
-            <div className="actions">
-              {auth.swiggy ? (
-                <button
-                  className="btn ghost small"
-                  onClick={async () => {
-                    await fetch("/api/auth/status?provider=swiggy", {
-                      method: "DELETE",
-                    });
-                    refreshAuth();
-                  }}
-                >
-                  Sign out
-                </button>
-              ) : (
-                <a className="btn small" href="/api/auth/swiggy">
-                  Sign in with Swiggy
-                </a>
-              )}
-            </div>
           </div>
 
           <div className="auth-card">
@@ -554,30 +522,6 @@ export default function Home() {
               <img className="plat-logo" src="/logos/zepto.png" alt="" />
               Zepto
             </header>
-            <div className="meta">
-              {auth.zepto
-                ? `Signed in. Last synced ${formatTime(auth.zeptoSyncedAt)}.`
-                : "Sign in with Zepto so Zepto prices can load for your area."}
-            </div>
-            <div className="actions">
-              {auth.zepto ? (
-                <button
-                  className="btn ghost small"
-                  onClick={async () => {
-                    await fetch("/api/auth/status?provider=zepto", {
-                      method: "DELETE",
-                    });
-                    refreshAuth();
-                  }}
-                >
-                  Sign out
-                </button>
-              ) : (
-                <a className="btn small" href="/api/auth/zepto">
-                  Sign in with Zepto
-                </a>
-              )}
-            </div>
           </div>
 
           <div className="auth-card">
@@ -812,7 +756,9 @@ export default function Home() {
                         </span>
                       )}
                     </h3>
-                    {block.error && <p className="err">{block.error}</p>}
+                    {block.error && (
+                      <p className="err">{friendlyPlatformError(block.error)}</p>
+                    )}
                     {!block.error && !block.products.length && (
                       <p className="empty">No products match these filters.</p>
                     )}
