@@ -86,8 +86,10 @@ Connect Swiggy / Zepto once via OTP if guest Instamart fails (tokens land in `.d
 
    | Variable | Example |
    |----------|---------|
-   | `COMPARI5_BASE_URL` | `https://compari5.netlify.app` |
-   | `GOOGLE_MAPS_API_KEY` | your key |
+| `COMPARI5_BASE_URL` | `https://compari5.netlify.app` |
+| `GOOGLE_MAPS_API_KEY` | your key |
+| `BLINKIT_PROXY_URL` | `https://compari5-blinkit-proxy.fly.dev` |
+| `BLINKIT_PROXY_SECRET` | same secret as Fly `BLINKIT_PROXY_SECRET` |
 
 3. `netlify.toml` already uses `@netlify/plugin-nextjs`.
 
@@ -114,13 +116,13 @@ Browser UI
 
 | | |
 |--|--|
-| **Path** | Direct Blinkit web APIs |
+| **Path** | Direct Blinkit web APIs, or **Fly.io Impit proxy** when `BLINKIT_PROXY_URL` is set |
 | **Auth** | No user login. Fetches a guest `auth_key`, then search. |
 | **HTTP** | Prefers **Impit** (Chrome-like TLS). Falls back to Undici if Impit is missing. |
-| **Local** | Usually **works** (Impit native binary on your Mac). |
-| **Netlify** | Usually **fails**. Lambda cannot load Impit cleanly; plain fetch gets **403** from Blinkit’s WAF. |
+| **Local** | Usually **works** (Impit native binary on your Mac) without the proxy. |
+| **Netlify** | Needs `BLINKIT_PROXY_URL` + `BLINKIT_PROXY_SECRET` pointing at `services/blinkit-proxy` on Fly. Direct Impit does not load in Netlify Functions. |
 
-Code: `lib/platforms/blinkit.js`, `lib/http.js`
+Proxy code: `services/blinkit-proxy/` (see its README for `fly deploy`).
 
 ### Swiggy Instamart
 
