@@ -7,28 +7,35 @@ Small Node service that calls Blinkit with **Impit** (Chrome TLS). Netlify canno
 - `GET /health`
 - `GET /search?q=&lat=&lng=` — header `x-compari5-proxy-secret: <secret>`
 
-## Recommended: Railway (no card for trial)
+## Recommended: Render (free web service)
 
-Railway: **$5 trial / 30 days**, then **~$1/month** free credit (enough for a tiny sleeping/light service). No card required to start.
+Render free web services sleep after ~15 minutes idle (first hit after idle can take ~1 minute).
 
-1. Sign up at [railway.com](https://railway.com) with GitHub (`ironman-gampala`).
-2. **New Project** → **Deploy from GitHub** → repo `compari5`.
-3. Set **Root Directory** to `services/blinkit-proxy`.
-4. Add variable: `BLINKIT_PROXY_SECRET` = a long random string.
-5. Generate a public domain (Settings → Networking → Generate domain).
-6. Copy URL, e.g. `https://compari5-blinkit-proxy-production.up.railway.app`.
+1. Sign up at [render.com](https://render.com) with GitHub.
+2. **New** → **Web Service** → repo `ironman-gampala/compari5`.
+3. **Root Directory:** `services/blinkit-proxy`
+4. **Runtime:** Docker · **Instance:** Free
+5. Env: `BLINKIT_PROXY_SECRET` = long random string (`openssl rand -hex 32`); set `PORT=8080` if needed.
+6. Deploy. Public URL looks like `https://compari5.onrender.com`.
+
+Smoke-test: open `https://YOUR-URL/health`.
+
+**Note:** Blinkit may still return **403** from cloud/datacenter IPs even with Impit. Local Mac often works; residential IP or a home-hosted proxy may be required for reliable cloud Blinkit.
 
 ### Netlify
 
-- `BLINKIT_PROXY_URL` = that Railway URL (no trailing slash)
+- `BLINKIT_PROXY_URL` = that Render URL (no trailing slash)
 - `BLINKIT_PROXY_SECRET` = same secret  
 Then redeploy Compari5.
 
-## Fly.io (optional / paid)
+## Alternatives
 
-Fly asks for a card for ongoing use. Prefer Railway unless you already pay for Fly.
+- **Railway** — trial credit, not forever free.
+- **Koyeb** — free tier closed for new signups (Mistral acquisition; paid only).
+- **Fly.io** — card for ongoing use.
 
 ```bash
+# Fly (optional)
 cd services/blinkit-proxy
 fly auth login
 fly apps create compari5-blinkit-proxy

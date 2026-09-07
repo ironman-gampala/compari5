@@ -4,7 +4,7 @@
 
 Make Blinkit search work on Netlify by offloading Chrome-TLS (Impit) requests to a small Node proxy.
 
-**Host preference:** Railway (trial + small free monthly credit, no card to start). Fly.io is optional/paid for new accounts.
+**Host preference:** Render free web service. Note: Blinkit may still 403 datacenter IPs; Impit alone is not always enough.
 
 ## Why
 
