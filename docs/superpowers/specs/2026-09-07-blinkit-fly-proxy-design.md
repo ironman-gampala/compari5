@@ -2,7 +2,9 @@
 
 ## Goal
 
-Make Blinkit search work on Netlify by offloading Chrome-TLS (Impit) requests to a small Fly.io Node service.
+Make Blinkit search work on Netlify by offloading Chrome-TLS (Impit) requests to a small Node proxy.
+
+**Host preference:** Railway (trial + small free monthly credit, no card to start). Fly.io is optional/paid for new accounts.
 
 ## Why
 
