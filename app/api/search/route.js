@@ -13,6 +13,7 @@ export async function GET(request) {
   const city = sp.get("city")?.trim() || "";
   const postalCode = sp.get("postalCode")?.trim() || "";
   const locality = sp.get("locality")?.trim() || "";
+  const platform = sp.get("platform")?.trim() || "";
 
   if (!q || q.length < 2) {
     return NextResponse.json({ error: "q required" }, { status: 400 });
@@ -24,6 +25,7 @@ export async function GET(request) {
   const results = await searchAll(q, lat, lng, {
     label,
     address: { city, postalCode, locality },
+    platform: platform || undefined,
   });
   return NextResponse.json({ query: q, lat, lng, results });
 }

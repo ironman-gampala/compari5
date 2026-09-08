@@ -1,12 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { buildMatchGroups, collectBrands } from "../lib/match.js";
 import {
-  buildShareUrl,
-  decodeBasketPayload,
   deleteSavedList,
-  encodeBasketPayload,
   loadSavedLists,
   persistSavedLists,
   saveNamedList,
@@ -166,7 +163,7 @@ function ProductCard({ prod, platformId, globalCheapest, onAdd }) {
   const save = Math.round(saveAmount(prod));
   const unit = formatUnitPrice(prod);
   return (
-    <article className="product">
+    <article className={"product" + (isBest ? " product-best" : "")}>
       {prod.image ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={prod.image} alt="" />
@@ -213,40 +210,52 @@ function ProductCard({ prod, platformId, globalCheapest, onAdd }) {
   );
 }
 
-function PlatformColumns({ filtered, globalCheapest, onAdd }) {
+function PlatformColumns({ filtered, globalCheapest, onAdd, loadingMap }) {
   return (
     <div className="platform-grid">
       {PLATFORMS.map((p) => {
         const block = filtered[p.id] || { products: [], error: null };
+        const loading = loadingMap?.[p.id];
         const priced = block.products.filter((x) => x.price != null);
         const floor = priced.length
           ? Math.min(...priced.map((x) => x.price))
           : null;
+        const isCheapestCol =
+          floor != null && globalCheapest != null && floor === globalCheapest;
         return (
-          <div className="platform" key={p.id}>
+          <div
+            className={
+              "platform" + (isCheapestCol ? " platform-cheapest" : "")
+            }
+            key={p.id}
+          >
+            {isCheapestCol ? (
+              <div className="platform-win-tag">Cheapest</div>
+            ) : null}
             <h3>
               <span className="plat-title">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img className="plat-logo" src={p.logo} alt="" />
                 {p.label}
               </span>
-              {floor != null && (
-                <span
-                  className={
-                    "floor" + (floor === globalCheapest ? " best" : "")
-                  }
-                >
+              {loading ? (
+                <span className="floor loading">…</span>
+              ) : floor != null ? (
+                <span className={"floor" + (isCheapestCol ? " best" : "")}>
                   from ₹{floor}
                 </span>
-              )}
+              ) : null}
             </h3>
             {block.error && (
               <p className="err">{friendlyPlatformError(block.error)}</p>
             )}
-            {!block.error && !block.products.length && (
+            {loading && !block.products.length && !block.error && (
+              <p className="empty">Fetching…</p>
+            )}
+            {!loading && !block.error && !block.products.length && (
               <p className="empty">No products match these filters.</p>
             )}
-            {block.products.slice(0, 12).map((prod) => (
+            {block.products.slice(0, 8).map((prod) => (
               <ProductCard
                 key={`${p.id}-${prod.id}`}
                 prod={prod}
@@ -324,6 +333,7 @@ export default function Home() {
   const [searchProgress, setSearchProgress] = useState("");
   const [loadingGeo, setLoadingGeo] = useState(false);
   const [loadingSearch, setLoadingSearch] = useState(false);
+  const [platformLoading, setPlatformLoading] = useState({});
   const [list, setList] = useState([]);
   const [staples, setStaples] = useState(DEFAULT_STAPLES);
   const [history, setHistory] = useState([]);
@@ -339,6 +349,8 @@ export default function Home() {
     brand: "",
     maxPrice: "",
   });
+  const areaDebounceRef = useRef(null);
+  const suggestSeq = useRef(0);
 
   function showToast(msg) {
     setToast(msg);
@@ -362,21 +374,26 @@ export default function Home() {
     } catch {}
 
     const params = new URLSearchParams(window.location.search);
-    if (params.get("basket")) {
-      const decoded = decodeBasketPayload(params.get("basket"));
-      if (decoded?.items?.length) {
-        setList(decoded.items);
-        if (decoded.location?.lat != null && decoded.location?.lng != null) {
-          setLocation(decoded.location);
-          setAreaQuery(
-            decoded.location.label?.split(",").slice(0, 2).join(",") || ""
-          );
-        }
-        showToast("Basket loaded from link");
-      } else {
-        setError("That share link looks invalid or too old.");
-      }
-      window.history.replaceState({}, "", "/");
+    const shareId = params.get("b");
+    if (shareId) {
+      fetch(`/api/share?id=${encodeURIComponent(shareId)}`)
+        .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+        .then(({ ok, d }) => {
+          if (!ok || !d?.items?.length) {
+            setError("That short basket link was not found.");
+            return;
+          }
+          setList(d.items);
+          if (d.location?.lat != null && d.location?.lng != null) {
+            setLocation(d.location);
+            setAreaQuery(
+              d.location.label?.split(",").slice(0, 2).join(",") || ""
+            );
+          }
+          showToast("Basket loaded from link");
+        })
+        .catch(() => setError("Could not load shared basket."))
+        .finally(() => window.history.replaceState({}, "", "/"));
     }
     if (params.get("connected")) {
       showToast(
@@ -437,23 +454,59 @@ export default function Home() {
     if (!ok) setFilters((f) => ({ ...f, brand: "" }));
   }, [brandOptions, filters.brand]);
 
-  async function geocode() {
-    setError("");
+  async function suggestAreas(query) {
+    const q = query.trim();
+    if (q.length < 2) {
+      setPlaces([]);
+      return;
+    }
+    const seq = ++suggestSeq.current;
     setLoadingGeo(true);
-    setPlaces([]);
     try {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(areaQuery)}`);
+      const res = await fetch(
+        `/api/geocode?mode=suggest&q=${encodeURIComponent(q)}`
+      );
       const data = await res.json();
+      if (seq !== suggestSeq.current) return;
       if (!res.ok) throw new Error(data.error || "Could not find that area");
       setPlaces(data.places || []);
-      if (!data.places?.length) {
-        setError(
-          data.warning ||
-            "No matching areas found. Try a neighbourhood and city name."
-        );
-      } else if (data.warning && data.provider === "nominatim") {
-        setError(data.warning);
-      }
+      if (!data.places?.length && data.warning) setError(data.warning);
+    } catch (e) {
+      if (seq === suggestSeq.current) setError(e.message);
+    } finally {
+      if (seq === suggestSeq.current) setLoadingGeo(false);
+    }
+  }
+
+  function onAreaInput(value) {
+    setAreaQuery(value);
+    setError("");
+    if (areaDebounceRef.current) clearTimeout(areaDebounceRef.current);
+    areaDebounceRef.current = setTimeout(() => suggestAreas(value), 280);
+  }
+
+  async function pickPlace(place) {
+    setPlaces([]);
+    setError("");
+    if (place.lat != null && place.lng != null) {
+      setLocation(place);
+      setAreaQuery(place.label.split(",").slice(0, 2).join(","));
+      showToast("Delivery area set");
+      return;
+    }
+    if (!place.placeId) return;
+    setLoadingGeo(true);
+    try {
+      const res = await fetch(
+        `/api/geocode?placeId=${encodeURIComponent(place.placeId)}`
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not resolve address");
+      const full = data.places?.[0];
+      if (!full) throw new Error("Could not resolve address");
+      setLocation(full);
+      setAreaQuery(full.label.split(",").slice(0, 2).join(","));
+      showToast("Delivery area set");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -481,12 +534,13 @@ export default function Home() {
     setHistory((prev) => [...entries, ...prev].slice(0, 40));
   }
 
-  async function fetchSearch(q) {
+  async function fetchSearch(q, platform) {
     const params = new URLSearchParams({
       q,
       lat: String(location.lat),
       lng: String(location.lng),
       label: location.label || "",
+      platform,
     });
     if (location.city) params.set("city", location.city);
     if (location.postalCode) params.set("postalCode", location.postalCode);
@@ -496,6 +550,55 @@ export default function Home() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Search failed");
     return data;
+  }
+
+  async function searchOneTermProgressive(term) {
+    const empty = Object.fromEntries(
+      PLATFORM_IDS.map((id) => [id, { products: [], error: null, meta: null }])
+    );
+    const merged = { ...empty };
+    setResults(empty);
+    setPlatformLoading(
+      Object.fromEntries(PLATFORM_IDS.map((id) => [id, true]))
+    );
+
+    await Promise.all(
+      PLATFORM_IDS.map(async (platform) => {
+        try {
+          const data = await fetchSearch(term, platform);
+          const block = data.results?.[platform] || {
+            products: [],
+            error: null,
+            meta: null,
+          };
+          merged[platform] = block;
+          setResults((prev) => ({
+            ...(prev || empty),
+            [platform]: block,
+          }));
+          if (block.meta?.addressCreated) {
+            setPinNote(
+              `Instamart is using a new delivery pin saved as ${block.meta.addressLabel || "Compari5"}.`
+            );
+          }
+        } catch (e) {
+          const block = {
+            products: [],
+            error: e.message || "Search failed",
+            meta: null,
+          };
+          merged[platform] = block;
+          setResults((prev) => ({
+            ...(prev || empty),
+            [platform]: block,
+          }));
+        } finally {
+          setPlatformLoading((prev) => ({ ...prev, [platform]: false }));
+        }
+      })
+    );
+
+    recordHistory(term, merged);
   }
 
   async function search(forcedQuery) {
@@ -513,46 +616,56 @@ export default function Home() {
     setError("");
     setPinNote("");
     setLoadingSearch(true);
-    setResults(null);
     setMultiResults(null);
     setSearchProgress("");
 
     try {
       if (terms.length === 1) {
-        setSearchProgress(`Searching ${terms[0]}…`);
-        const data = await fetchSearch(terms[0]);
-        setResults(data.results);
-        recordHistory(terms[0], data.results);
-        const meta = data.results?.instamart?.meta;
-        if (meta?.addressCreated) {
-          setPinNote(
-            `Instamart is using a new delivery pin saved as ${meta.addressLabel || "Compari5"}. It matches the area you selected above.`
-          );
-        }
+        setSearchProgress(`Comparing “${terms[0]}” across stores…`);
+        await searchOneTermProgressive(terms[0]);
       } else {
         const collected = [];
         for (let i = 0; i < terms.length; i++) {
           const term = terms[i];
-          setSearchProgress(`Searching ${i + 1}/${terms.length}: ${term}…`);
+          setSearchProgress(`Item ${i + 1}/${terms.length}: ${term}…`);
           try {
-            const data = await fetchSearch(term);
-            collected.push({ query: term, results: data.results, error: null });
-            recordHistory(term, data.results);
+            const parts = await Promise.all(
+              PLATFORM_IDS.map(async (platform) => {
+                try {
+                  const data = await fetchSearch(term, platform);
+                  return [platform, data.results?.[platform]];
+                } catch (e) {
+                  return [
+                    platform,
+                    {
+                      products: [],
+                      error: e.message || "Search failed",
+                      meta: null,
+                    },
+                  ];
+                }
+              })
+            );
+            const resultsObj = Object.fromEntries(parts);
+            collected.push({ query: term, results: resultsObj, error: null });
+            recordHistory(term, resultsObj);
+            setMultiResults([...collected]);
           } catch (e) {
             collected.push({
               query: term,
               results: null,
               error: e.message || "Search failed",
             });
+            setMultiResults([...collected]);
           }
         }
-        setMultiResults(collected);
       }
     } catch (e) {
       setError(e.message);
     } finally {
       setLoadingSearch(false);
       setSearchProgress("");
+      setPlatformLoading({});
     }
   }
 
@@ -636,9 +749,16 @@ export default function Home() {
 
   function pinCurrentQuery() {
     const q = productQuery.trim().toLowerCase();
-    if (q.length < 2) return;
-    if (!staples.includes(q)) setStaples((prev) => [q, ...prev].slice(0, 12));
-    showToast("Saved to staples");
+    if (q.length < 2) {
+      setError("Type a product search first, then save it as a shortcut.");
+      return;
+    }
+    if (staples.includes(q)) {
+      showToast("Already in saved searches");
+      return;
+    }
+    setStaples((prev) => [q, ...prev].slice(0, 12));
+    showToast("Saved search shortcut");
   }
 
   function clearFilters() {
@@ -690,12 +810,18 @@ export default function Home() {
   async function shareBasketLink() {
     if (!list.length) return;
     try {
-      const payload = encodeBasketPayload({ location, items: list });
-      const url = buildShareUrl(window.location.origin, payload);
+      const res = await fetch("/api/share", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ location, items: list }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Share failed");
+      const url = `${window.location.origin}/?b=${data.id}`;
       await navigator.clipboard.writeText(url);
-      showToast("Share link copied");
-    } catch {
-      setError("Could not copy share link.");
+      showToast("Short link copied");
+    } catch (e) {
+      setError(e.message || "Could not copy share link.");
     }
   }
 
@@ -834,46 +960,54 @@ export default function Home() {
         </div>
 
         <div className="control-grid">
-          <div className="field">
+          <div className="field address-field">
             <label>Delivery area</label>
-            <div className="row">
+            <div className="address-box">
               <input
                 value={areaQuery}
-                onChange={(e) => setAreaQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && geocode()}
-                placeholder="HSR Layout Bengaluru, Bandra West"
+                onChange={(e) => onAreaInput(e.target.value)}
+                onFocus={() => {
+                  if (areaQuery.trim().length >= 2 && !places.length) {
+                    suggestAreas(areaQuery);
+                  }
+                }}
+                placeholder="Start typing an address or neighbourhood…"
+                autoComplete="off"
+                aria-autocomplete="list"
               />
-              <button
-                className="btn"
-                onClick={geocode}
-                disabled={loadingGeo || areaQuery.length < 2}
-              >
-                {loadingGeo ? "Finding…" : "Find area"}
-              </button>
+              {loadingGeo && (
+                <span className="address-spinner" aria-hidden>
+                  …
+                </span>
+              )}
+              {!!places.length && (
+                <div className="suggestions address-suggestions" role="listbox">
+                  {places.map((p) => (
+                    <button
+                      key={`${p.placeId || p.lat}-${p.label}`}
+                      className="suggestion"
+                      type="button"
+                      onClick={() => pickPlace(p)}
+                    >
+                      <strong>{p.mainText || p.label.split(",")[0]}</strong>
+                      <span>
+                        {p.secondaryText ||
+                          p.label.split(",").slice(1).join(",").trim()}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             {location && (
               <div className="chip location-chip">
                 <span className="chip-dot" />
-                Near {location.label.split(",").slice(0, 2).join(",")}
+                Delivering near {location.label.split(",").slice(0, 2).join(",")}
               </div>
             )}
-            {!!places.length && (
-              <div className="suggestions">
-                {places.map((p) => (
-                  <button
-                    key={`${p.lat}-${p.lng}-${p.label}`}
-                    className="suggestion"
-                    onClick={() => {
-                      setLocation(p);
-                      setPlaces([]);
-                      setAreaQuery(p.label.split(",").slice(0, 2).join(","));
-                    }}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            <p className="field-hint">
+              Google-style address search — pick a suggestion to set your pin.
+            </p>
           </div>
 
           <div className="field">
@@ -900,27 +1034,35 @@ export default function Home() {
         </div>
 
         <div className="field">
-          <label>Staples</label>
+          <label>Saved searches</label>
+          <p className="field-hint" style={{ marginTop: 0 }}>
+            Tap to search again. Use × to remove. “Save this search” pins the
+            box above.
+          </p>
           <div className="staples">
             {staples.map((s) => (
-              <button
+              <div
                 key={s}
                 className={
-                  "staple" +
-                  (productQuery.trim().toLowerCase().includes(s) ? " active" : "")
+                  "staple-chip" +
+                  (productQuery.trim().toLowerCase() === s ? " active" : "")
                 }
-                onClick={() => search(s)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  toggleStaple(s);
-                }}
-                title="Right click to unpin"
               >
-                {s}
-              </button>
+                <button type="button" className="staple-run" onClick={() => search(s)}>
+                  {s}
+                </button>
+                <button
+                  type="button"
+                  className="staple-x"
+                  aria-label={`Remove ${s}`}
+                  onClick={() => toggleStaple(s)}
+                >
+                  ×
+                </button>
+              </div>
             ))}
             <button className="btn soft small" onClick={pinCurrentQuery}>
-              Pin search
+              Save this search
             </button>
           </div>
         </div>
@@ -1072,6 +1214,7 @@ export default function Home() {
               <PlatformColumns
                 filtered={filteredResults}
                 globalCheapest={globalCheapest}
+                loadingMap={platformLoading}
                 onAdd={(prod) => addItem(prod, productQuery)}
               />
             </>
@@ -1140,97 +1283,113 @@ export default function Home() {
           <div className="section-head">
             <div>
               <h2 className="section-title">Basket</h2>
-              <p className="section-sub">Totals by store from what you added.</p>
+              <p className="section-sub">
+                One column per store — items you added under each logo.
+              </p>
             </div>
           </div>
 
-          {totals.winner && list.length > 0 && (
-            <div className="basket-winner">
-              <span>
-                Cheapest mix:{" "}
-                <strong>
-                  {PLATFORMS.find((p) => p.id === totals.winner)?.label}
-                </strong>
-              </span>
-              <span>₹{Math.round(totals.t[totals.winner])}</span>
-            </div>
-          )}
-
           {!list.length && (
             <p className="empty">
-              Add from results, matched rows, or “Add lowest”.
+              Add products from results. They’ll show here under each store.
             </p>
           )}
 
-          {list.map((item) => (
-            <div className="list-item" key={item.key}>
-              <div>
-                <div className="list-name">{item.name}</div>
-                <div className="qty">
-                  {item.platform} · ₹{item.price}
-                  {item.quantity ? ` · ${item.quantity}` : ""}
-                  {item.eta ? ` · ${item.eta}` : ""}
-                </div>
-              </div>
-              <div className="controls">
-                <input
-                  type="number"
-                  min={1}
-                  value={item.qty}
-                  onChange={(e) => updateQty(item.key, e.target.value)}
-                />
-                <button
-                  className="btn ghost small"
-                  onClick={() =>
-                    openProduct(item.url, item.name, item.platform)
-                  }
-                >
-                  Open
-                </button>
-                <button
-                  className="btn ghost small"
-                  onClick={() => removeItem(item.key)}
-                >
-                  Remove
-                </button>
-              </div>
-            </div>
-          ))}
-
           {!!list.length && (
             <>
-              <div className="totals">
-                {PLATFORMS.map((p) => (
-                  <div
-                    className={
-                      "total-row" + (totals.winner === p.id ? " winner" : "")
-                    }
-                    key={p.id}
-                  >
-                    <span>
-                      {p.label}
-                      {totals.counts[p.id]
-                        ? ` · ${totals.counts[p.id]}`
-                        : ""}
-                    </span>
-                    <span>
-                      {totals.counts[p.id]
-                        ? `₹${Math.round(totals.t[p.id])}`
-                        : "—"}
-                    </span>
-                  </div>
-                ))}
+              <div className="basket-table-wrap">
+                <table className="basket-table">
+                  <thead>
+                    <tr>
+                      {PLATFORMS.map((p) => (
+                        <th
+                          key={p.id}
+                          className={
+                            totals.winner === p.id ? "col-cheapest" : ""
+                          }
+                        >
+                          <span className="basket-th">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img className="plat-logo" src={p.logo} alt="" />
+                            {p.label}
+                            {totals.winner === p.id ? (
+                              <span className="th-tag">Lowest</span>
+                            ) : null}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      {PLATFORMS.map((p) => {
+                        const items = list.filter((i) => i.platform === p.id);
+                        return (
+                          <td
+                            key={p.id}
+                            className={
+                              totals.winner === p.id ? "col-cheapest" : ""
+                            }
+                          >
+                            {!items.length ? (
+                              <p className="empty tiny">No items</p>
+                            ) : (
+                              <ul className="basket-col-items">
+                                {items.map((item) => (
+                                  <li key={item.key}>
+                                    <div className="list-name">{item.name}</div>
+                                    <div className="qty">
+                                      ₹{item.price}
+                                      {item.quantity
+                                        ? ` · ${item.quantity}`
+                                        : ""}
+                                    </div>
+                                    <div className="controls">
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        value={item.qty}
+                                        onChange={(e) =>
+                                          updateQty(item.key, e.target.value)
+                                        }
+                                        aria-label="Quantity"
+                                      />
+                                      <button
+                                        className="btn ghost small"
+                                        onClick={() => removeItem(item.key)}
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            <div className="basket-col-total">
+                              {totals.counts[p.id]
+                                ? `₹${Math.round(totals.t[p.id])}`
+                                : "—"}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
               </div>
 
-              {(totals.savingsVsWorst > 0 || totals.discountVsMrp > 0) && (
-                <div className="savings">
-                  {totals.savingsVsWorst > 0
-                    ? `About ₹${Math.round(totals.savingsVsWorst)} less than the costliest store mix. `
-                    : ""}
-                  {totals.discountVsMrp > 0
-                    ? `Offers save ~₹${Math.round(totals.discountVsMrp)} vs MRP. `
-                    : ""}
-                  Fees not included.
+              {totals.winner && (
+                <div className="basket-winner">
+                  <span>
+                    Cheapest store column:{" "}
+                    <strong>
+                      {PLATFORMS.find((p) => p.id === totals.winner)?.label}
+                    </strong>
+                    {totals.savingsVsWorst > 0
+                      ? ` · saves ~₹${Math.round(totals.savingsVsWorst)} vs highest`
+                      : ""}
+                  </span>
+                  <span>₹{Math.round(totals.t[totals.winner])}</span>
                 </div>
               )}
 
@@ -1239,7 +1398,7 @@ export default function Home() {
                   Keep lowest picks
                 </button>
                 <button className="btn soft small" onClick={shareBasketLink}>
-                  Copy link
+                  Copy short link
                 </button>
                 <button className="btn ghost small" onClick={shareBasketText}>
                   Copy text
@@ -1252,7 +1411,7 @@ export default function Home() {
           )}
 
           <div className="saved-block">
-            <h4>Saved lists</h4>
+            <h4>Named baskets</h4>
             <div className="saved-save-row">
               <input
                 value={listName}
@@ -1269,7 +1428,7 @@ export default function Home() {
               </button>
             </div>
             {!savedLists.length && (
-              <p className="empty tiny">No saved lists yet.</p>
+              <p className="empty tiny">No saved baskets yet.</p>
             )}
             <ul className="saved-list">
               {savedLists.map((l) => (
