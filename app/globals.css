@@ -682,8 +682,65 @@ a {
   }
 }
 
-.address-field {
+.address-field,
+.search-field {
   position: relative;
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+}
+
+.input-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  min-height: 3.35rem;
+}
+
+.input-shell.with-action {
+  grid-template-columns: 1fr auto;
+  gap: 0.55rem;
+}
+
+.input-shell > input {
+  width: 100%;
+  min-height: 3.35rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.95rem 1.05rem;
+  background: #fff;
+  color: var(--ink);
+  font-size: 1.05rem;
+  outline: none;
+}
+
+.input-shell > input:focus {
+  border-color: rgba(232, 93, 4, 0.55);
+  box-shadow: 0 0 0 4px rgba(232, 93, 4, 0.12);
+}
+
+.input-shell.with-action > .btn {
+  min-height: 3.35rem;
+  white-space: nowrap;
+  padding-left: 1.2rem;
+  padding-right: 1.2rem;
+}
+
+.input-shell-status {
+  position: absolute;
+  right: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.field-meta {
+  min-height: 1.7rem;
+  display: flex;
+  align-items: center;
 }
 
 .address-box {

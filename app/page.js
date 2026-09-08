@@ -22,23 +22,13 @@ const PLATFORM_IDS = PLATFORMS.map((p) => p.id);
 
 const LOC_KEY = "compari5.location";
 const LIST_KEY = "compari5.list";
-const STAPLES_KEY = "compari5.staples";
 const HISTORY_KEY = "compari5.priceHistory";
 
-const DEFAULT_STAPLES = [
-  "amul milk",
-  "brown bread",
-  "eggs",
-  "banana",
-  "maggi",
-  "atta",
-];
-
 const SORT_OPTIONS = [
-  { id: "price_asc", label: "Price: low → high" },
-  { id: "price_desc", label: "Price: high → low" },
+  { id: "price_asc", label: "Price: low to high" },
+  { id: "price_desc", label: "Price: high to low" },
   { id: "save_desc", label: "Biggest MRP save" },
-  { id: "name_asc", label: "Name A–Z" },
+  { id: "name_asc", label: "Name A to Z" },
 ];
 
 function formatTime(ts) {
@@ -81,7 +71,7 @@ function friendlyPlatformError(message) {
   if (/not signed in|not connected|Sign in/i.test(msg)) {
     return msg;
   }
-  if (msg.length > 160) return `${msg.slice(0, 157)}…`;
+  if (msg.length > 160) return `${msg.slice(0, 157)}...`;
   return msg;
 }
 
@@ -239,7 +229,7 @@ function PlatformColumns({ filtered, globalCheapest, onAdd, loadingMap }) {
                 {p.label}
               </span>
               {loading ? (
-                <span className="floor loading">…</span>
+                <span className="floor loading">...</span>
               ) : floor != null ? (
                 <span className={"floor" + (isCheapestCol ? " best" : "")}>
                   from ₹{floor}
@@ -250,7 +240,7 @@ function PlatformColumns({ filtered, globalCheapest, onAdd, loadingMap }) {
               <p className="err">{friendlyPlatformError(block.error)}</p>
             )}
             {loading && !block.products.length && !block.error && (
-              <p className="empty">Fetching…</p>
+              <p className="empty">Fetching...</p>
             )}
             {!loading && !block.error && !block.products.length && (
               <p className="empty">No products match these filters.</p>
@@ -293,7 +283,7 @@ function MatchBoard({ groups, onAdd }) {
                   return (
                     <div className="match-cell muted" key={p.id}>
                       <span className="match-plat">{p.label}</span>
-                      <span>—</span>
+                      <span>None</span>
                     </div>
                   );
                 }
@@ -335,7 +325,6 @@ export default function Home() {
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [platformLoading, setPlatformLoading] = useState({});
   const [list, setList] = useState([]);
-  const [staples, setStaples] = useState(DEFAULT_STAPLES);
   const [history, setHistory] = useState([]);
   const [savedLists, setSavedLists] = useState([]);
   const [listName, setListName] = useState("");
@@ -361,7 +350,6 @@ export default function Home() {
     try {
       const loc = JSON.parse(localStorage.getItem(LOC_KEY) || "null");
       const items = JSON.parse(localStorage.getItem(LIST_KEY) || "[]");
-      const pins = JSON.parse(localStorage.getItem(STAPLES_KEY) || "null");
       const hist = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
       setSavedLists(loadSavedLists());
       if (loc) {
@@ -369,7 +357,6 @@ export default function Home() {
         setAreaQuery(loc.label?.split(",").slice(0, 2).join(",") || "");
       }
       if (Array.isArray(items)) setList(items);
-      if (Array.isArray(pins) && pins.length) setStaples(pins);
       if (Array.isArray(hist)) setHistory(hist.slice(0, 40));
     } catch {}
 
@@ -416,10 +403,6 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem(LIST_KEY, JSON.stringify(list));
   }, [list]);
-
-  useEffect(() => {
-    localStorage.setItem(STAPLES_KEY, JSON.stringify(staples));
-  }, [staples]);
 
   useEffect(() => {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 40)));
@@ -621,13 +604,13 @@ export default function Home() {
 
     try {
       if (terms.length === 1) {
-        setSearchProgress(`Comparing “${terms[0]}” across stores…`);
+        setSearchProgress(`Comparing "${terms[0]}" across stores...`);
         await searchOneTermProgressive(terms[0]);
       } else {
         const collected = [];
         for (let i = 0; i < terms.length; i++) {
           const term = terms[i];
-          setSearchProgress(`Item ${i + 1}/${terms.length}: ${term}…`);
+          setSearchProgress(`Item ${i + 1}/${terms.length}: ${term}...`);
           try {
             const parts = await Promise.all(
               PLATFORM_IDS.map(async (platform) => {
@@ -737,28 +720,6 @@ export default function Home() {
 
   function removeItem(key) {
     setList((prev) => prev.filter((x) => x.key !== key));
-  }
-
-  function toggleStaple(term) {
-    setStaples((prev) => {
-      const has = prev.includes(term);
-      if (has) return prev.filter((x) => x !== term);
-      return [...prev, term].slice(0, 12);
-    });
-  }
-
-  function pinCurrentQuery() {
-    const q = productQuery.trim().toLowerCase();
-    if (q.length < 2) {
-      setError("Type a product search first, then save it as a shortcut.");
-      return;
-    }
-    if (staples.includes(q)) {
-      showToast("Already in saved searches");
-      return;
-    }
-    setStaples((prev) => [q, ...prev].slice(0, 12));
-    showToast("Saved search shortcut");
   }
 
   function clearFilters() {
@@ -941,7 +902,7 @@ export default function Home() {
           Compari<span>5</span>
         </h1>
         <p className="tagline">
-          Live prices from Blinkit, Instamart, Zepto, and BigBasket — pick an
+          Live prices from Blinkit, Instamart, Zepto, and BigBasket. Pick an
           area, search one item or a whole list, and see who wins.
         </p>
       </header>
@@ -962,7 +923,7 @@ export default function Home() {
         <div className="control-grid">
           <div className="field address-field">
             <label>Delivery area</label>
-            <div className="address-box">
+            <div className="input-shell">
               <input
                 value={areaQuery}
                 onChange={(e) => onAreaInput(e.target.value)}
@@ -971,15 +932,15 @@ export default function Home() {
                     suggestAreas(areaQuery);
                   }
                 }}
-                placeholder="Start typing an address or neighbourhood…"
+                placeholder="Type an address or neighbourhood"
                 autoComplete="off"
                 aria-autocomplete="list"
               />
-              {loadingGeo && (
-                <span className="address-spinner" aria-hidden>
-                  …
+              {loadingGeo ? (
+                <span className="input-shell-status" aria-hidden>
+                  ...
                 </span>
-              )}
+              ) : null}
               {!!places.length && (
                 <div className="suggestions address-suggestions" role="listbox">
                   {places.map((p) => (
@@ -999,71 +960,40 @@ export default function Home() {
                 </div>
               )}
             </div>
-            {location && (
-              <div className="chip location-chip">
-                <span className="chip-dot" />
-                Delivering near {location.label.split(",").slice(0, 2).join(",")}
-              </div>
-            )}
-            <p className="field-hint">
-              Google-style address search — pick a suggestion to set your pin.
-            </p>
+            <div className="field-meta">
+              {location ? (
+                <div className="chip location-chip">
+                  <span className="chip-dot" />
+                  Near {location.label.split(",").slice(0, 2).join(",")}
+                </div>
+              ) : (
+                <p className="field-hint">Pick a suggestion to set your pin.</p>
+              )}
+            </div>
           </div>
 
-          <div className="field">
+          <div className="field search-field">
             <label>Search products</label>
-            <div className="row">
+            <div className="input-shell with-action">
               <input
                 value={productQuery}
                 onChange={(e) => setProductQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && search()}
-                placeholder="amul milk — or milk, bread, eggs"
+                placeholder="amul milk, or milk, bread, eggs"
               />
               <button
                 className="btn"
                 onClick={() => search()}
                 disabled={loadingSearch || productQuery.length < 2 || !location}
               >
-                {loadingSearch ? "Comparing…" : "Compare"}
+                {loadingSearch ? "Comparing..." : "Compare"}
               </button>
             </div>
-            <p className="field-hint">
-              Tip: separate items with commas for a multi-store list compare.
-            </p>
-          </div>
-        </div>
-
-        <div className="field">
-          <label>Saved searches</label>
-          <p className="field-hint" style={{ marginTop: 0 }}>
-            Tap to search again. Use × to remove. “Save this search” pins the
-            box above.
-          </p>
-          <div className="staples">
-            {staples.map((s) => (
-              <div
-                key={s}
-                className={
-                  "staple-chip" +
-                  (productQuery.trim().toLowerCase() === s ? " active" : "")
-                }
-              >
-                <button type="button" className="staple-run" onClick={() => search(s)}>
-                  {s}
-                </button>
-                <button
-                  type="button"
-                  className="staple-x"
-                  aria-label={`Remove ${s}`}
-                  onClick={() => toggleStaple(s)}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-            <button className="btn soft small" onClick={pinCurrentQuery}>
-              Save this search
-            </button>
+            <div className="field-meta">
+              <p className="field-hint">
+                Use commas to compare several items in one go.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -1195,13 +1125,13 @@ export default function Home() {
           {!hasAnyResults && !loadingSearch && (
             <div className="empty-panel">
               <p className="empty">
-                Choose a delivery area, then search a product or tap a staple.
+                Choose a delivery area, then search for a product.
               </p>
             </div>
           )}
           {loadingSearch && !hasAnyResults && (
             <div className="empty-panel">
-              <p className="empty">{searchProgress || "Loading prices…"}</p>
+              <p className="empty">{searchProgress || "Loading prices..."}</p>
             </div>
           )}
 
@@ -1230,7 +1160,7 @@ export default function Home() {
                       Best: {block.insight.best.label} at ₹
                       {block.insight.best.floor}
                       {block.insight.saves > 0
-                        ? ` · saves ₹${Math.round(block.insight.saves)}`
+                        ? `, saves ₹${Math.round(block.insight.saves)}`
                         : ""}
                     </p>
                   )}
@@ -1284,7 +1214,7 @@ export default function Home() {
             <div>
               <h2 className="section-title">Basket</h2>
               <p className="section-sub">
-                One column per store — items you added under each logo.
+                One column per store with the items you added.
               </p>
             </div>
           </div>
@@ -1368,7 +1298,7 @@ export default function Home() {
                             <div className="basket-col-total">
                               {totals.counts[p.id]
                                 ? `₹${Math.round(totals.t[p.id])}`
-                                : "—"}
+                                : "None"}
                             </div>
                           </td>
                         );
@@ -1386,7 +1316,7 @@ export default function Home() {
                       {PLATFORMS.find((p) => p.id === totals.winner)?.label}
                     </strong>
                     {totals.savingsVsWorst > 0
-                      ? ` · saves ~₹${Math.round(totals.savingsVsWorst)} vs highest`
+                      ? `, saves about ₹${Math.round(totals.savingsVsWorst)} vs highest`
                       : ""}
                   </span>
                   <span>₹{Math.round(totals.t[totals.winner])}</span>
