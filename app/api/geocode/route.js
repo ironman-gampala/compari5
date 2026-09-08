@@ -11,6 +11,86 @@ function getGoogleKey() {
   ).trim();
 }
 
+async function googlePlacesSuggestOnly(query, key) {
+  const autoRes = await fetch(
+    "https://places.googleapis.com/v1/places:autocomplete",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask":
+          "suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat",
+      },
+      body: JSON.stringify({
+        input: query,
+        includedRegionCodes: ["in"],
+        languageCode: "en",
+      }),
+      cache: "no-store",
+    }
+  );
+
+  const autoData = await autoRes.json();
+  if (!autoRes.ok) {
+    const msg =
+      autoData?.error?.message ||
+      autoData?.error_message ||
+      JSON.stringify(autoData).slice(0, 200);
+    throw new Error(`Places Autocomplete failed: ${msg}`);
+  }
+
+  return (autoData.suggestions || [])
+    .map((s) => s.placePrediction)
+    .filter(Boolean)
+    .slice(0, 6)
+    .map((s) => {
+      const placeId = (s.placeId || "").replace(/^places\//, "");
+      const main = s.structuredFormat?.mainText?.text;
+      const secondary = s.structuredFormat?.secondaryText?.text;
+      const label =
+        s.text?.text || [main, secondary].filter(Boolean).join(", ") || query;
+      return {
+        label,
+        mainText: main || label,
+        secondaryText: secondary || "",
+        placeId,
+        lat: null,
+        lng: null,
+        source: "google-suggest",
+      };
+    })
+    .filter((p) => p.placeId);
+}
+
+async function googlePlaceById(placeId, key) {
+  const id = String(placeId || "").replace(/^places\//, "");
+  const detRes = await fetch(
+    `https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`,
+    {
+      headers: {
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask":
+          "id,displayName,formattedAddress,location,addressComponents",
+      },
+      cache: "no-store",
+    }
+  );
+  const det = await detRes.json();
+  if (!detRes.ok || !det?.location) {
+    throw new Error(det?.error?.message || "Place details failed");
+  }
+  const parts = parseAddressComponents(det.addressComponents);
+  return {
+    label: det.formattedAddress || det.displayName?.text || id,
+    lat: Number(det.location.latitude),
+    lng: Number(det.location.longitude),
+    placeId: id,
+    source: "google",
+    ...parts,
+  };
+}
+
 async function googlePlacesNewSearch(query, key) {
   const autoRes = await fetch(
     "https://places.googleapis.com/v1/places:autocomplete",
@@ -201,14 +281,46 @@ async function nominatimSearch(q) {
 }
 
 export async function GET(request) {
-  const q = request.nextUrl.searchParams.get("q")?.trim();
+  const sp = request.nextUrl.searchParams;
+  const placeId = sp.get("placeId")?.trim();
+  const mode = sp.get("mode")?.trim() || "";
+  const q = sp.get("q")?.trim();
+  const key = getGoogleKey();
+
+  if (placeId) {
+    if (!key) {
+      return NextResponse.json(
+        { error: "GOOGLE_MAPS_API_KEY required for place details" },
+        { status: 400 }
+      );
+    }
+    try {
+      const place = await googlePlaceById(placeId, key);
+      return NextResponse.json({ places: [place], provider: "google" });
+    } catch (err) {
+      return NextResponse.json(
+        { error: err?.message || "Place details failed" },
+        { status: 502 }
+      );
+    }
+  }
+
   if (!q || q.length < 2) {
     return NextResponse.json({ error: "q required" }, { status: 400 });
   }
 
-  const key = getGoogleKey();
-
   try {
+    if (key && mode === "suggest") {
+      try {
+        const places = await googlePlacesSuggestOnly(q, key);
+        if (places.length) {
+          return NextResponse.json({ places, provider: "google-suggest" });
+        }
+      } catch {
+        // fall through to full search
+      }
+    }
+
     if (key) {
       let places = [];
       let used = "google";
