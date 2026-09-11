@@ -16,6 +16,7 @@ const PLATFORMS = [
   { id: "instamart", label: "Instamart", logo: "/logos/instamart.png" },
   { id: "zepto", label: "Zepto", logo: "/logos/zepto.png" },
   { id: "bigbasket", label: "BigBasket", logo: "/logos/bigbasket.png" },
+  { id: "firstclub", label: "FirstClub", logo: "/logos/firstclub.png" },
 ];
 
 const PLATFORM_IDS = PLATFORMS.map((p) => p.id);
@@ -56,6 +57,7 @@ function openProduct(url, name, platform) {
     instamart: `https://www.swiggy.com/instamart/search?custom_back=true&query=${q}`,
     zepto: `https://www.zeptonow.com/search?query=${q}`,
     bigbasket: `https://www.bigbasket.com/ps/?q=${q}`,
+    firstclub: `https://www.firstclub.site/`,
   };
   window.open(fallback[platform], "_blank", "noopener,noreferrer");
 }
@@ -68,8 +70,11 @@ function friendlyPlatformError(message) {
   if (/Blinkit blocked|auth_key failed/i.test(msg)) {
     return "Blinkit blocked this server request. Try again shortly.";
   }
-  if (/not signed in|not connected|Sign in/i.test(msg)) {
+  if (/not signed in|not connected|Sign in|session expired|MCP 401|phone OTP/i.test(msg)) {
     return msg;
+  }
+  if (/FirstClub/i.test(msg)) {
+    return msg.length > 180 ? `${msg.slice(0, 177)}...` : msg;
   }
   if (msg.length > 160) return `${msg.slice(0, 157)}...`;
   return msg;
@@ -821,12 +826,14 @@ export default function Home() {
       instamart: 0,
       zepto: 0,
       bigbasket: 0,
+      firstclub: 0,
     };
     const counts = {
       blinkit: 0,
       instamart: 0,
       zepto: 0,
       bigbasket: 0,
+      firstclub: 0,
     };
     let listMrp = 0;
     let listOffer = 0;
@@ -902,8 +909,8 @@ export default function Home() {
           Compari<span>5</span>
         </h1>
         <p className="tagline">
-          Live prices from Blinkit, Instamart, Zepto, and BigBasket. Pick an
-          area, search one item or a whole list, and see who wins.
+          Live prices from Blinkit, Instamart, Zepto, BigBasket, and FirstClub.
+          Pick an area, search one item or a whole list, and see who wins.
         </p>
       </header>
 

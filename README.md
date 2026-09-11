@@ -1,6 +1,6 @@
 # Compari5
 
-Personal India quick-commerce price compare for **Blinkit**, **Swiggy Instamart**, **Zepto**, and **BigBasket**.
+Personal India quick-commerce price compare for **Blinkit**, **Swiggy Instamart**, **Zepto**, **BigBasket**, and **FirstClub**.
 
 Live site: [https://compari5.netlify.app](https://compari5.netlify.app)
 
@@ -21,6 +21,7 @@ No checkout. Unofficial personal / play tool — not affiliated with any of the 
 - Instamart and Zepto use **shared server tokens** (one OTP login on the server for everyone visiting the live site).
 - Blinkit often works only on your laptop (see integrations below).
 - BigBasket usually works without login on both local and Netlify.
+- FirstClub ([firstclub.site](https://www.firstclub.site/)) is **app-only** for catalog (Bengaluru & Hyderabad). The fifth card stays for compare UX; prices need `FIRSTCLUB_SESSION_ID` + `FIRSTCLUB_USER_ID` if their login session ever works.
 - If Instamart/Zepto stop returning prices, re-auth on the **live** site (no redeploy):
   - Swiggy: [https://compari5.netlify.app/api/auth/swiggy](https://compari5.netlify.app/api/auth/swiggy)
   - Zepto: [https://compari5.netlify.app/api/auth/zepto](https://compari5.netlify.app/api/auth/zepto)
@@ -120,7 +121,7 @@ Browser UI
 | **Auth** | No user login. Fetches a guest `auth_key`, then search. |
 | **HTTP** | Prefers **Impit** (Chrome-like TLS). Falls back to Undici if Impit is missing. |
 | **Local** | Usually **works** (Impit native binary on your Mac) without the proxy. |
-| **Netlify** | Needs `BLINKIT_PROXY_URL` + `BLINKIT_PROXY_SECRET` pointing at `services/blinkit-proxy` on **Render** (or similar). Direct Impit does not load in Netlify Functions. Cloud IPs may still get Blinkit 403. |
+| **Netlify** | Must call `BLINKIT_PROXY_URL`. **Render cloud IPs are often 403’d by Blinkit** — run `services/blinkit-proxy` on your home Mac + Cloudflare tunnel and point Netlify there (see proxy README). |
 
 Proxy code: `services/blinkit-proxy/` (see its README).
 
@@ -162,6 +163,17 @@ Code: `lib/platforms/zepto.js`, `lib/auth/mcp.js`, `app/api/auth/zepto/*`
 
 Code: `lib/platforms/bigbasket.js`
 
+### FirstClub
+
+| | |
+|--|--|
+| **Path** | Heimdall browse API (`order.firstclub.co.in` / `prod-heimdall.firstclub.tech`) |
+| **Auth** | Optional `FIRSTCLUB_SESSION_ID` + `FIRSTCLUB_USER_ID` (guest browse is often blocked) |
+| **Location** | Serviceability by pin/lat-lng; default ClubHouse `FCHBLRSJR01` |
+| **Local / Netlify** | Soft-fails cleanly when their API is down or login-gated |
+
+Code: `lib/platforms/firstclub.js`
+
 ---
 
 ## Project layout
@@ -172,7 +184,7 @@ app/                  # Next.js UI + API routes
   api/geocode/        # Google Places / Geocoding (+ Nominatim fallback)
   api/auth/           # Swiggy / Zepto OAuth start + callback
 lib/
-  platforms/          # blinkit, instamart, zepto, bigbasket adapters
+  platforms/          # blinkit, instamart, zepto, bigbasket, firstclub adapters
   auth/               # MCP OAuth + token store (file / Netlify Blobs)
   http.js             # Impit + Undici fetch helper
 public/logos/         # Store icons
@@ -202,4 +214,4 @@ netlify.toml          # Next.js on Netlify + COMPARI5_BASE_URL
 
 ## Disclaimer
 
-Unofficial. Not affiliated with Blinkit, Swiggy, Zepto, or BigBasket. Store APIs and MCPs can break or block without notice.
+Unofficial. Not affiliated with Blinkit, Swiggy, Zepto, BigBasket, or FirstClub. Store APIs and MCPs can break or block without notice.
