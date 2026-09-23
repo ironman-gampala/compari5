@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "sync:zepto-auth": "node scripts/sync-zepto-auth.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -15,6 +16,7 @@
     "impit-linux-x64-gnu": "^0.14.4",
     "impit-linux-x64-musl": "^0.14.4",
     "next": "15.5.25",
+    "puppeteer-core": "^23.11.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "undici": "^7.29.1"
