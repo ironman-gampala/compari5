@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withPostalCode } from "@/lib/postal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,14 +82,14 @@ async function googlePlaceById(placeId, key) {
     throw new Error(det?.error?.message || "Place details failed");
   }
   const parts = parseAddressComponents(det.addressComponents);
-  return {
+  return withPostalCode({
     label: det.formattedAddress || det.displayName?.text || id,
     lat: Number(det.location.latitude),
     lng: Number(det.location.longitude),
     placeId: id,
     source: "google",
     ...parts,
-  };
+  });
 }
 
 async function googlePlacesNewSearch(query, key) {
@@ -159,11 +160,11 @@ async function googlePlacesNewSearch(query, key) {
         if (!text) return null;
         const geo = await googleGeocode(text, key);
         return geo[0]
-          ? { ...geo[0], label: text, placeId: id }
+          ? withPostalCode({ ...geo[0], label: text, placeId: id })
           : null;
       }
       const parts = parseAddressComponents(det.addressComponents);
-      return {
+      return withPostalCode({
         label:
           det.formattedAddress ||
           det.displayName?.text ||
@@ -174,7 +175,7 @@ async function googlePlacesNewSearch(query, key) {
         placeId: id,
         source: "google",
         ...parts,
-      };
+      });
     })
   );
 
@@ -205,17 +206,19 @@ async function googleGeocode(query, key) {
     throw new Error("Google Maps quota exceeded. Try again later.");
   }
 
-  return (data.results || []).slice(0, 6).map((r) => {
-    const parts = parseGeocodeComponents(r.address_components);
-    return {
-      label: r.formatted_address,
-      lat: Number(r.geometry.location.lat),
-      lng: Number(r.geometry.location.lng),
-      placeId: r.place_id,
-      source: "google",
-      ...parts,
-    };
-  });
+  return Promise.all(
+    (data.results || []).slice(0, 6).map((r) => {
+      const parts = parseGeocodeComponents(r.address_components);
+      return withPostalCode({
+        label: r.formatted_address,
+        lat: Number(r.geometry.location.lat),
+        lng: Number(r.geometry.location.lng),
+        placeId: r.place_id,
+        source: "google",
+        ...parts,
+      });
+    })
+  );
 }
 
 function parseAddressComponents(components) {
@@ -231,8 +234,19 @@ function parseAddressComponents(components) {
       get("sublocality_level_1", "sublocality", "neighborhood") ||
       get("locality"),
     city: get("locality", "administrative_area_level_2"),
-    postalCode: get("postal_code"),
+    state: get("administrative_area_level_1"),
+    postalCode: get("postal_code") || extractPinFromComponents(components),
   };
+}
+
+function extractPinFromComponents(components) {
+  if (!Array.isArray(components)) return "";
+  for (const c of components) {
+    const text = c.longText || c.shortText || c.long_name || c.short_name || "";
+    const m = String(text).match(/\b([1-9]\d{5})\b/);
+    if (m) return m[1];
+  }
+  return "";
 }
 
 function parseGeocodeComponents(components) {
@@ -248,7 +262,8 @@ function parseGeocodeComponents(components) {
       get("sublocality_level_1", "sublocality", "neighborhood") ||
       get("locality"),
     city: get("locality", "administrative_area_level_2"),
-    postalCode: get("postal_code"),
+    state: get("administrative_area_level_1"),
+    postalCode: get("postal_code") || extractPinFromComponents(components),
   };
 }
 
@@ -272,12 +287,19 @@ async function nominatimSearch(q) {
   });
   if (!res.ok) return [];
   const data = await res.json();
-  return (data || []).map((p) => ({
-    label: p.display_name,
-    lat: Number(p.lat),
-    lng: Number(p.lon),
-    source: "nominatim",
-  }));
+  return Promise.all(
+    (data || []).map((p) =>
+      withPostalCode({
+        label: p.display_name,
+        lat: Number(p.lat),
+        lng: Number(p.lon),
+        postalCode: p.address?.postcode || "",
+        city: p.address?.city || p.address?.town || p.address?.state_district || "",
+        locality: p.address?.suburb || p.address?.neighbourhood || "",
+        source: "nominatim",
+      })
+    )
+  );
 }
 
 export async function GET(request) {

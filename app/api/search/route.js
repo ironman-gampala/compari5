@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { searchAll } from "@/lib/platforms";
+import { resolveIndianPin } from "@/lib/postal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export async function GET(request) {
   const lng = Number(sp.get("lng"));
   const label = sp.get("label")?.trim() || "";
   const city = sp.get("city")?.trim() || "";
-  const postalCode = sp.get("postalCode")?.trim() || "";
+  const postalCodeIn = sp.get("postalCode")?.trim() || "";
   const locality = sp.get("locality")?.trim() || "";
   const platform = sp.get("platform")?.trim() || "";
 
@@ -21,6 +22,14 @@ export async function GET(request) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return NextResponse.json({ error: "lat/lng required" }, { status: 400 });
   }
+
+  const postalCode =
+    (await resolveIndianPin({
+      lat,
+      lng,
+      postalCode: postalCodeIn,
+      label,
+    })) || postalCodeIn;
 
   const results = await searchAll(q, lat, lng, {
     label,
