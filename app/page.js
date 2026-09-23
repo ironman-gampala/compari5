@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildMatchGroups, collectBrands } from "../lib/match.js";
 import {
+  filterProductsByQuery,
+  inferProductCategory,
+} from "../lib/relevance.js";
+import {
   deleteSavedList,
   loadSavedLists,
   persistSavedLists,
@@ -93,8 +97,9 @@ function saveAmount(prod) {
   return 0;
 }
 
-function applySortFilter(products, sortBy, filters) {
+function applySortFilter(products, sortBy, filters, query = "") {
   let list = Array.isArray(products) ? [...products] : [];
+  list = filterProductsByQuery(list, query);
 
   if (filters.inStock) {
     list = list.filter(
@@ -127,14 +132,14 @@ function applySortFilter(products, sortBy, filters) {
   return list;
 }
 
-function filterPlatformResults(results, sortBy, filters) {
+function filterPlatformResults(results, sortBy, filters, query = "") {
   if (!results) return null;
   const out = {};
   for (const p of PLATFORMS) {
     const block = results[p.id] || { products: [], error: null };
     out[p.id] = {
       ...block,
-      products: applySortFilter(block.products || [], sortBy, filters),
+      products: applySortFilter(block.products || [], sortBy, filters, query),
     };
   }
   return out;
@@ -173,28 +178,24 @@ function ProductCard({ prod, platformId, globalCheapest, onAdd }) {
       ) : (
         <div className="product-ph" />
       )}
-      <div>
+      <div className="product-body">
         <div className="name" title={prod.name}>
           {prod.name}
         </div>
         <div className="qty">
-          {[prod.brand, prod.quantity].filter(Boolean).join(" · ") ||
+          {[prod.brand, prod.quantity, prod.eta].filter(Boolean).join(" · ") ||
             "Pack size not listed"}
         </div>
-        <div className="badges">
-          {prod.eta ? <span className="badge eta">{prod.eta}</span> : null}
-          {unit ? <span className="badge unit">{unit}</span> : null}
-          {save > 0 ? <span className="badge save">Save ₹{save}</span> : null}
-          {isBest ? <span className="badge best">Lowest</span> : null}
-        </div>
         <div className="price-row">
-          <div>
+          <div className="price-block">
             <span className={"price" + (isBest ? " best" : "")}>
               ₹{prod.price}
             </span>
             {prod.mrp && prod.mrp > prod.price ? (
               <span className="mrp">₹{prod.mrp}</span>
             ) : null}
+            {save > 0 ? <span className="save-inline">−₹{save}</span> : null}
+            {unit ? <span className="unit-inline">{unit}</span> : null}
           </div>
           <div className="links">
             <button className="btn soft small" onClick={() => onAdd(prod)}>
@@ -236,20 +237,20 @@ function PlatformColumns({ filtered, globalCheapest, onAdd, loadingMap }) {
               <span className="plat-title">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img className="plat-logo" src={p.logo} alt="" />
-                {p.label}
+                <span className="plat-name">
+                  {p.label}
+                  {isCheapestCol ? (
+                    <span className="platform-win-chip">Cheapest</span>
+                  ) : null}
+                </span>
               </span>
-              <div className="platform-head-meta">
-                {isCheapestCol ? (
-                  <span className="platform-win-chip">Cheapest</span>
-                ) : null}
-                {loading ? (
-                  <span className="floor loading">...</span>
-                ) : floor != null ? (
-                  <span className={"floor" + (isCheapestCol ? " best" : "")}>
-                    from ₹{floor}
-                  </span>
-                ) : null}
-              </div>
+              {loading ? (
+                <span className="floor loading">...</span>
+              ) : floor != null ? (
+                <span className={"floor" + (isCheapestCol ? " best" : "")}>
+                  from ₹{floor}
+                </span>
+              ) : null}
             </div>
             {block.error && (
               <p className="err">{friendlyPlatformError(block.error)}</p>
@@ -369,9 +370,13 @@ function BrandMultiSelect({ options, selected, onChange }) {
         type="button"
         className={"brand-multi-trigger" + (open ? " open" : "")}
         aria-expanded={open}
+        aria-haspopup="listbox"
         onClick={() => setOpen((v) => !v)}
       >
-        {label}
+        <span className="brand-multi-label">{label}</span>
+        <span className="brand-multi-caret" aria-hidden>
+          ▾
+        </span>
       </button>
       {open && (
         <div className="brand-multi-panel" role="listbox" aria-multiselectable>
@@ -385,7 +390,7 @@ function BrandMultiSelect({ options, selected, onChange }) {
                   checked={selected.includes(b)}
                   onChange={() => toggle(b)}
                 />
-                <span>{b}</span>
+                <span className="brand-multi-option-text">{b}</span>
               </label>
             ))
           )}
@@ -949,8 +954,9 @@ export default function Home() {
   }, [list]);
 
   const filteredResults = useMemo(
-    () => filterPlatformResults(results, sortBy, filters),
-    [results, sortBy, filters]
+    () =>
+      filterPlatformResults(results, sortBy, filters, productQuery.trim()),
+    [results, sortBy, filters, productQuery]
   );
 
   const singleInsight = useMemo(
@@ -969,7 +975,12 @@ export default function Home() {
   const filteredMulti = useMemo(() => {
     if (!multiResults) return null;
     return multiResults.map((block) => {
-      const filtered = filterPlatformResults(block.results, sortBy, filters);
+      const filtered = filterPlatformResults(
+        block.results,
+        sortBy,
+        filters,
+        block.query
+      );
       const insight = insightFromFiltered(filtered);
       const all = filtered
         ? PLATFORMS.flatMap((p) => filtered[p.id]?.products || [])
@@ -980,9 +991,16 @@ export default function Home() {
         insight,
         groups: buildMatchGroups(all, PLATFORM_IDS),
         globalCheapest: insight?.best?.floor ?? null,
+        category: inferProductCategory(block.query),
       };
     });
   }, [multiResults, sortBy, filters]);
+
+  const activeCategory = useMemo(
+    () =>
+      filteredMulti?.length ? "" : inferProductCategory(productQuery.trim()),
+    [filteredMulti, productQuery]
+  );
 
   const hasAnyResults = !!(filteredResults || filteredMulti?.length);
 
@@ -1169,29 +1187,31 @@ export default function Home() {
                   }
                 />
               </label>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={filters.hasDiscount}
-                  onChange={(e) =>
-                    setFilters((f) => ({
-                      ...f,
-                      hasDiscount: e.target.checked,
-                    }))
-                  }
-                />
-                On offer
-              </label>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={filters.inStock}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, inStock: e.target.checked }))
-                  }
-                />
-                In stock
-              </label>
+              <div className="filter-toggles">
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={filters.hasDiscount}
+                    onChange={(e) =>
+                      setFilters((f) => ({
+                        ...f,
+                        hasDiscount: e.target.checked,
+                      }))
+                    }
+                  />
+                  On offer
+                </label>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={filters.inStock}
+                    onChange={(e) =>
+                      setFilters((f) => ({ ...f, inStock: e.target.checked }))
+                    }
+                  />
+                  In stock
+                </label>
+              </div>
               {filtersActive && (
                 <button className="btn ghost small" onClick={clearFilters}>
                   Reset
@@ -1199,6 +1219,15 @@ export default function Home() {
               )}
             </div>
           )}
+
+          {hasAnyResults && activeCategory ? (
+            <div className="category-strip">
+              <span className="category-chip">Category · {activeCategory}</span>
+              <span className="category-note">
+                Hiding close mismatches (e.g. buttermilk when you search butter)
+              </span>
+            </div>
+          ) : null}
 
           {singleInsight && (
             <div className="insight-strip">

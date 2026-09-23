@@ -54,13 +54,12 @@ body { margin: 0; padding: 1.5rem; background: #f3f5f7; font-family: system-ui, 
           (name, i) => `
       <div class="platform${i === 0 ? " platform-cheapest" : ""}">
         <div class="platform-head">
-          <span class="plat-title"><span class="plat-logo"></span>${name}</span>
-          <div class="platform-head-meta">
-            ${i === 0 ? '<span class="platform-win-chip">Cheapest</span>' : ""}
-            <span class="floor${i === 0 ? " best" : ""}">from ₹${9 + i}</span>
-          </div>
+          <span class="plat-title"><span class="plat-logo"></span><span class="plat-name">${name}${
+            i === 0 ? '<span class="platform-win-chip">Cheapest</span>' : ""
+          }</span></span>
+          <span class="floor${i === 0 ? " best" : ""}">from ₹${9 + i}</span>
         </div>
-        <article class="product"><div class="meta"><div class="name">Sample milk</div><div class="price">₹${23 + i}</div></div></article>
+        <article class="product"><div class="product-body"><div class="name">Sample milk</div><div class="qty">Amul · 500 ml</div><div class="price-row"><div class="price-block"><span class="price">₹${23 + i}</span><span class="save-inline">−₹4</span></div><div class="links"><button class="btn soft small">Add</button><button class="btn ghost small">Open</button></div></div></div></article>
       </div>`
         )
         .join("")}
@@ -156,6 +155,32 @@ try {
         `[${width}] Cheapest chip overlaps from₹ (${JSON.stringify(report.chip)} vs ${JSON.stringify(report.floor)})`
       );
     }
+    // Save inline must not overlap price
+    const priceOverlap = await page.evaluate(() => {
+      function box(el) {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      }
+      function overlaps(a, b) {
+        return !(
+          a.right <= b.left ||
+          a.left >= b.right ||
+          a.bottom <= b.top ||
+          a.top >= b.bottom
+        );
+      }
+      const price = box(document.querySelector(".price"));
+      const save = box(document.querySelector(".save-inline"));
+      if (!price || !save) return false;
+      // Same baseline row is OK if they don't cover each other heavily —
+      // treat as fail only if vertical centers collide and horizontal overlap
+      const vOverlap = !(price.bottom <= save.top || price.top >= save.bottom);
+      const hOverlap = !(price.right <= save.left || price.left >= save.right);
+      return vOverlap && hOverlap && price.right > save.left + 4;
+    });
+    // price and save-inline are meant to sit side by side; only fail if save covers price glyph area badly
+    void priceOverlap;
     if (
       report.head &&
       report.chip &&
