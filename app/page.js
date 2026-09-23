@@ -16,7 +16,7 @@ const PLATFORMS = [
   { id: "instamart", label: "Instamart", logo: "/logos/instamart.png" },
   { id: "zepto", label: "Zepto", logo: "/logos/zepto.png" },
   { id: "bigbasket", label: "BigBasket", logo: "/logos/bigbasket.png" },
-  { id: "firstclub", label: "FirstClub", logo: "/logos/firstclub.png" },
+  { id: "minutes", label: "Minutes", logo: "/logos/minutes.png" },
 ];
 
 const PLATFORM_IDS = PLATFORMS.map((p) => p.id);
@@ -55,9 +55,9 @@ function openProduct(url, name, platform) {
   const fallback = {
     blinkit: `https://blinkit.com/s/?q=${q}`,
     instamart: `https://www.swiggy.com/instamart/search?custom_back=true&query=${q}`,
-    zepto: `https://www.zeptonow.com/search?query=${q}`,
+    zepto: `https://www.zepto.com/search?query=${q}`,
     bigbasket: `https://www.bigbasket.com/ps/?q=${q}`,
-    firstclub: `https://www.firstclub.site/`,
+    minutes: `https://www.flipkart.com/search?q=${q}&marketplace=HYPERLOCAL`,
   };
   window.open(fallback[platform], "_blank", "noopener,noreferrer");
 }
@@ -73,8 +73,14 @@ function friendlyPlatformError(message) {
   if (/not signed in|not connected|Sign in|session expired|MCP 401|phone OTP/i.test(msg)) {
     return msg;
   }
-  if (/FirstClub/i.test(msg)) {
+  if (/Flipkart Minutes|Minutes returned|Minutes needs|Minutes is not/i.test(msg)) {
     return msg.length > 180 ? `${msg.slice(0, 177)}...` : msg;
+  }
+  if (/BigBasket is blocking|Akamai 403|BigBasket blocked/i.test(msg)) {
+    return "BigBasket is blocking product search from this network right now.";
+  }
+  if (/Chrome is not installed|puppeteer-core is missing/i.test(msg)) {
+    return "Zepto guest search needs Chrome on this machine, or sign in via Zepto OTP.";
   }
   if (msg.length > 160) return `${msg.slice(0, 157)}...`;
   return msg;
@@ -396,7 +402,11 @@ export default function Home() {
       window.history.replaceState({}, "", "/");
     }
     if (params.get("auth_error")) {
-      setError(decodeURIComponent(params.get("auth_error")));
+      try {
+        setError(decodeURIComponent(params.get("auth_error")));
+      } catch {
+        setError(params.get("auth_error") || "Sign-in failed");
+      }
       window.history.replaceState({}, "", "/");
     }
   }, []);
@@ -826,14 +836,14 @@ export default function Home() {
       instamart: 0,
       zepto: 0,
       bigbasket: 0,
-      firstclub: 0,
+      minutes: 0,
     };
     const counts = {
       blinkit: 0,
       instamart: 0,
       zepto: 0,
       bigbasket: 0,
-      firstclub: 0,
+      minutes: 0,
     };
     let listMrp = 0;
     let listOffer = 0;
@@ -909,8 +919,9 @@ export default function Home() {
           Compari<span>5</span>
         </h1>
         <p className="tagline">
-          Live prices from Blinkit, Instamart, Zepto, BigBasket, and FirstClub.
-          Pick an area, search one item or a whole list, and see who wins.
+          Live prices from Blinkit, Instamart, Zepto, BigBasket, and Flipkart
+          Minutes. Pick an area, search one item or a whole list, and see who
+          wins.
         </p>
       </header>
 
