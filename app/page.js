@@ -108,9 +108,11 @@ function applySortFilter(products, sortBy, filters) {
     const max = Number(filters.maxPrice);
     list = list.filter((p) => p.price != null && p.price <= max);
   }
-  if (filters.brand) {
-    const b = filters.brand.toLowerCase();
-    list = list.filter((p) => String(p.brand || "").toLowerCase() === b);
+  if (filters.brands?.length) {
+    const wanted = new Set(filters.brands.map((b) => b.toLowerCase()));
+    list = list.filter((p) =>
+      wanted.has(String(p.brand || "").toLowerCase())
+    );
   }
 
   list.sort((a, b) => {
@@ -230,23 +232,25 @@ function PlatformColumns({ filtered, globalCheapest, onAdd, loadingMap }) {
             }
             key={p.id}
           >
-            {isCheapestCol ? (
-              <div className="platform-win-tag">Cheapest</div>
-            ) : null}
-            <h3>
+            <div className="platform-head">
               <span className="plat-title">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img className="plat-logo" src={p.logo} alt="" />
                 {p.label}
               </span>
-              {loading ? (
-                <span className="floor loading">...</span>
-              ) : floor != null ? (
-                <span className={"floor" + (isCheapestCol ? " best" : "")}>
-                  from ₹{floor}
-                </span>
-              ) : null}
-            </h3>
+              <div className="platform-head-meta">
+                {isCheapestCol ? (
+                  <span className="platform-win-chip">Cheapest</span>
+                ) : null}
+                {loading ? (
+                  <span className="floor loading">...</span>
+                ) : floor != null ? (
+                  <span className={"floor" + (isCheapestCol ? " best" : "")}>
+                    from ₹{floor}
+                  </span>
+                ) : null}
+              </div>
+            </div>
             {block.error && (
               <p className="err">{friendlyPlatformError(block.error)}</p>
             )}
@@ -275,11 +279,17 @@ function PlatformColumns({ filtered, globalCheapest, onAdd, loadingMap }) {
 function MatchBoard({ groups, onAdd }) {
   if (!groups?.length) return null;
   return (
-    <div className="match-board">
-      <div className="match-head">
-        <h3>Same item, all stores</h3>
-        <p>Matched by name and pack size across platforms.</p>
-      </div>
+    <details className="match-board">
+      <summary className="match-summary">
+        <span className="match-summary-title">Same item, all stores</span>
+        <span className="match-summary-sub">
+          {groups.length} match{groups.length === 1 ? "" : "es"} · name + pack
+          size
+        </span>
+      </summary>
+      <p className="match-hint">
+        Matched by name and pack size across platforms. Tap a price to add.
+      </p>
       <div className="match-list">
         {groups.slice(0, 8).map((g) => (
           <div className="match-row" key={g.key}>
@@ -320,6 +330,76 @@ function MatchBoard({ groups, onAdd }) {
           </div>
         ))}
       </div>
+    </details>
+  );
+}
+
+function BrandMultiSelect({ options, selected, onChange }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onDoc(e) {
+      if (rootRef.current && !rootRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const label = !selected.length
+    ? "All brands"
+    : selected.length === 1
+      ? selected[0]
+      : `${selected.length} brands`;
+
+  function toggle(brand) {
+    const set = new Set(selected);
+    if (set.has(brand)) set.delete(brand);
+    else set.add(brand);
+    onChange([...set]);
+  }
+
+  return (
+    <div className="filter-field brand-multi" ref={rootRef}>
+      <span>Brand</span>
+      <button
+        type="button"
+        className={"brand-multi-trigger" + (open ? " open" : "")}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {label}
+      </button>
+      {open && (
+        <div className="brand-multi-panel" role="listbox" aria-multiselectable>
+          {options.length === 0 ? (
+            <p className="brand-multi-empty">No brands in results yet</p>
+          ) : (
+            options.map((b) => (
+              <label className="brand-multi-option" key={b}>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(b)}
+                  onChange={() => toggle(b)}
+                />
+                <span>{b}</span>
+              </label>
+            ))
+          )}
+          {selected.length > 0 && (
+            <button
+              type="button"
+              className="btn ghost small brand-multi-clear"
+              onClick={() => onChange([])}
+            >
+              Clear brands
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -346,7 +426,7 @@ export default function Home() {
   const [filters, setFilters] = useState({
     inStock: false,
     hasDiscount: false,
-    brand: "",
+    brands: [],
     maxPrice: "",
   });
   const areaDebounceRef = useRef(null);
@@ -445,12 +525,13 @@ export default function Home() {
   }, [results, multiResults]);
 
   useEffect(() => {
-    if (!filters.brand) return;
-    const ok = brandOptions.some(
-      (b) => b.toLowerCase() === filters.brand.toLowerCase()
-    );
-    if (!ok) setFilters((f) => ({ ...f, brand: "" }));
-  }, [brandOptions, filters.brand]);
+    if (!filters.brands?.length) return;
+    const allowed = new Set(brandOptions.map((b) => b.toLowerCase()));
+    const next = filters.brands.filter((b) => allowed.has(b.toLowerCase()));
+    if (next.length !== filters.brands.length) {
+      setFilters((f) => ({ ...f, brands: next }));
+    }
+  }, [brandOptions, filters.brands]);
 
   async function suggestAreas(query) {
     const q = query.trim();
@@ -742,7 +823,7 @@ export default function Home() {
     setFilters({
       inStock: false,
       hasDiscount: false,
-      brand: "",
+      brands: [],
       maxPrice: "",
     });
   }
@@ -750,7 +831,7 @@ export default function Home() {
   const filtersActive =
     filters.inStock ||
     filters.hasDiscount ||
-    !!filters.brand ||
+    (filters.brands?.length || 0) > 0 ||
     filters.maxPrice !== "" ||
     sortBy !== "price_asc";
 
@@ -1071,23 +1152,12 @@ export default function Home() {
                   ))}
                 </select>
               </label>
-              <label className="filter-field">
-                <span>Brand</span>
-                <select
-                  value={filters.brand}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, brand: e.target.value }))
-                  }
-                >
-                  <option value="">All brands</option>
-                  {brandOptions.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="filter-field">
+              <BrandMultiSelect
+                options={brandOptions}
+                selected={filters.brands || []}
+                onChange={(brands) => setFilters((f) => ({ ...f, brands }))}
+              />
+              <label className="filter-field filter-max">
                 <span>Max ₹</span>
                 <input
                   type="number"
@@ -1155,14 +1225,14 @@ export default function Home() {
 
           {filteredResults && (
             <>
-              <MatchBoard
-                groups={singleMatchGroups}
-                onAdd={(prod) => addItem(prod, productQuery)}
-              />
               <PlatformColumns
                 filtered={filteredResults}
                 globalCheapest={globalCheapest}
                 loadingMap={platformLoading}
+                onAdd={(prod) => addItem(prod, productQuery)}
+              />
+              <MatchBoard
+                groups={singleMatchGroups}
                 onAdd={(prod) => addItem(prod, productQuery)}
               />
             </>
@@ -1199,13 +1269,13 @@ export default function Home() {
               )}
               {block.filtered && (
                 <>
-                  <MatchBoard
-                    groups={block.groups}
-                    onAdd={(prod) => addItem(prod, block.query)}
-                  />
                   <PlatformColumns
                     filtered={block.filtered}
                     globalCheapest={block.globalCheapest}
+                    onAdd={(prod) => addItem(prod, block.query)}
+                  />
+                  <MatchBoard
+                    groups={block.groups}
                     onAdd={(prod) => addItem(prod, block.query)}
                   />
                 </>

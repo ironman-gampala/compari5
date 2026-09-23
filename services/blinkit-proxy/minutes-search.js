@@ -1,8 +1,10 @@
-import { fetchJson, parseRupee, withTimeout } from "../http.js";
+import { Impit } from "impit";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const X_UA = "Mozilla/5.0 FKUA/website/42/website/Desktop";
+
+const impit = new Impit({ browser: "chrome" });
 
 let session = {
   cookies: "",
@@ -10,59 +12,12 @@ let session = {
   locationKey: "",
 };
 
-function proxyConfigured() {
-  return Boolean(process.env.BLINKIT_PROXY_URL?.trim());
+function parseRupee(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value == null) return null;
+  const n = Number(String(value).replace(/[^\d.]/g, ""));
+  return Number.isFinite(n) ? n : null;
 }
-
-async function searchViaProxy(query, lat, lng, options = {}) {
-  const base = process.env.BLINKIT_PROXY_URL.replace(/\/$/, "");
-  const secret = process.env.BLINKIT_PROXY_SECRET || "";
-  const pin =
-    String(options.address?.postalCode || "").replace(/\D/g, "").slice(0, 6) ||
-    String(options.label || "").match(/\b(\d{6})\b/)?.[1] ||
-    "";
-  const url =
-    `${base}/minutes?` +
-    new URLSearchParams({
-      q: query,
-      lat: String(lat),
-      lng: String(lng),
-      label: options.label || "",
-      city: options.address?.city || "",
-      postalCode: pin,
-      locality: options.address?.locality || "",
-      state: options.address?.state || "",
-    });
-
-  const { ok, status, data } = await withTimeout(
-    fetchJson(url, {
-      headers: {
-        accept: "application/json",
-        "bypass-tunnel-reminder": "true",
-        ...(secret ? { "x-compari5-proxy-secret": secret } : {}),
-      },
-    }),
-    30000,
-    "minutes-proxy"
-  );
-
-  if (!ok) {
-    const err = data?.error || `Minutes proxy failed (${status || "error"})`;
-    if (/timed out|fetch failed|ECONNREFUSED|ENOTFOUND/i.test(err)) {
-      throw new Error(
-        "Flipkart Minutes proxy is unreachable. Keep the home Impit tunnel running (services/blinkit-proxy/start-home-tunnel.sh)."
-      );
-    }
-    throw new Error(err);
-  }
-
-  const products = Array.isArray(data?.products) ? data.products : [];
-  if (!products.length) {
-    throw new Error("Flipkart Minutes returned no products for this search.");
-  }
-  return products.slice(0, 24);
-}
-
 
 function absorbSetCookie(setCookie) {
   if (!setCookie?.length) return;
@@ -83,15 +38,19 @@ function absorbSetCookie(setCookie) {
 
 async function ensureHomeCookies() {
   if (session.cookies) return;
-  const { setCookie } = await fetchJson("https://www.flipkart.com/", {
+  const res = await impit.fetch("https://www.flipkart.com/", {
     headers: { "user-agent": UA, accept: "text/html" },
   });
-  absorbSetCookie(setCookie);
+  absorbSetCookie(
+    typeof res.headers.getSetCookie === "function"
+      ? res.headers.getSetCookie()
+      : []
+  );
 }
 
 function resolvePin(options = {}) {
   return (
-    String(options.address?.postalCode || "").replace(/\D/g, "").slice(0, 6) ||
+    String(options.postalCode || "").replace(/\D/g, "").slice(0, 6) ||
     String(options.label || "").match(/\b(\d{6})\b/)?.[1] ||
     ""
   );
@@ -104,7 +63,7 @@ function addressParts(options = {}, pin) {
     .map((s) => s.trim())
     .filter(Boolean);
   const city =
-    options.address?.city ||
+    options.city ||
     parts.find((p) =>
       /bengaluru|bangalore|mumbai|delhi|hyderabad|chennai|pune|kolkata|gurgaon|gurugram|noida/i.test(
         p
@@ -113,18 +72,14 @@ function addressParts(options = {}, pin) {
     parts[1] ||
     "Bengaluru";
   const state =
-    options.address?.state ||
+    options.state ||
     parts.find((p) =>
       /karnataka|maharashtra|delhi|telangana|tamil nadu|west bengal|haryana|uttar pradesh/i.test(
         p
       )
     ) ||
     "Karnataka";
-  const line =
-    options.address?.locality ||
-    options.address?.addressLine ||
-    parts[0] ||
-    `Pincode ${pin}`;
+  const line = options.locality || parts[0] || `Pincode ${pin}`;
   return {
     addressLine1: String(line).slice(0, 120),
     city: String(city).replace(/\s*\d{6}\s*/g, "").trim() || "Bengaluru",
@@ -266,26 +221,34 @@ async function romePost(path, body) {
   let host = session.host || "2.rome.api.flipkart.com";
 
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const { ok, status, data, text, setCookie } = await fetchJson(
-      `https://${host}${path}`,
-      {
-        method: "POST",
-        headers: {
-          "user-agent": UA,
-          "x-user-agent": X_UA,
-          flipkart_secure: "true",
-          accept: "*/*",
-          "content-type": "application/json",
-          origin: "https://www.flipkart.com",
-          referer: "https://www.flipkart.com/",
-          cookie: session.cookies,
-        },
-        body: JSON.stringify(body),
-      }
+    const res = await impit.fetch(`https://${host}${path}`, {
+      method: "POST",
+      headers: {
+        "user-agent": UA,
+        "x-user-agent": X_UA,
+        flipkart_secure: "true",
+        accept: "*/*",
+        "content-type": "application/json",
+        origin: "https://www.flipkart.com",
+        referer: "https://www.flipkart.com/",
+        cookie: session.cookies,
+      },
+      body: JSON.stringify(body),
+    });
+    absorbSetCookie(
+      typeof res.headers.getSetCookie === "function"
+        ? res.headers.getSetCookie()
+        : []
     );
-    absorbSetCookie(setCookie);
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
 
-    if (isDcChange(status, data)) {
+    if (isDcChange(res.status, data)) {
       const id =
         data?.RESPONSE?.id || data?.META_INFO?.dcInfo?.id || String(attempt + 2);
       host = `${id}.rome.api.flipkart.com`;
@@ -293,14 +256,14 @@ async function romePost(path, body) {
       continue;
     }
 
-    if (!ok && status !== 200) {
+    if (!res.ok && res.status !== 200) {
       throw new Error(
-        data?.ERROR_MESSAGE || `Flipkart Minutes request failed (${status})`
+        data?.ERROR_MESSAGE || `Flipkart Minutes request failed (${res.status})`
       );
     }
 
     session.host = host;
-    return { data, text: typeof text === "string" ? text : JSON.stringify(data) };
+    return { data, text };
   }
 
   throw new Error("Flipkart Minutes could not reach a working datacenter.");
@@ -320,13 +283,12 @@ async function ensureLocation(lat, lng, pin, options = {}) {
     );
   }
 
-  const addressInfo = addressParts(options, pin);
   await romePost("/api/4/location/update", {
     geoLocation: {
       latitude: Number(lat),
       longitude: Number(lng),
     },
-    addressInfo,
+    addressInfo: addressParts(options, pin),
     redirectionUrl: `/search?q=milk&marketplace=HYPERLOCAL&pincode=${pin}`,
     marketplace: "HYPERLOCAL",
   });
@@ -335,29 +297,11 @@ async function ensureLocation(lat, lng, pin, options = {}) {
 }
 
 export async function searchMinutes(query, lat, lng, options = {}) {
+  const q = String(query || "").trim();
+  if (q.length < 2) return [];
   if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
     throw new Error("Flipkart Minutes needs a valid delivery area pin first.");
   }
-
-  const q = String(query || "").trim();
-  if (q.length < 2) return [];
-
-  // Prefer home Impit proxy on Netlify (Flipkart often blocks cloud TLS).
-  // If the tunnel is down, fall through to direct fetch.
-  if (proxyConfigured()) {
-    try {
-      return await searchViaProxy(q, lat, lng, options);
-    } catch (err) {
-      console.warn("minutes proxy failed, trying direct:", err?.message || err);
-    }
-  }
-
-  // Fresh Flipkart jar per search — serverless reuse otherwise sticks on preview gate.
-  session = {
-    cookies: "",
-    host: "2.rome.api.flipkart.com",
-    locationKey: "",
-  };
 
   const pin = resolvePin(options);
   if (!/^\d{6}$/.test(pin)) {
@@ -366,17 +310,7 @@ export async function searchMinutes(query, lat, lng, options = {}) {
     );
   }
 
-  try {
-    await ensureLocation(lat, lng, pin, options);
-  } catch (err) {
-    const msg = String(err?.message || err);
-    if (/impit|reqwest|native bindings|Chrome TLS|fetch failed|ECONNRESET|network/i.test(msg)) {
-      throw new Error(
-        "Flipkart Minutes could not load on this server (TLS/network). Keep the home Impit tunnel running."
-      );
-    }
-    throw err;
-  }
+  await ensureLocation(lat, lng, pin, options);
 
   const pageUri =
     `/search?q=${encodeURIComponent(q)}` +
@@ -402,14 +336,7 @@ export async function searchMinutes(query, lat, lng, options = {}) {
         changed: false,
       },
     }));
-  } catch (err) {
-    const msg = String(err?.message || err);
-    if (/impit|reqwest|native bindings|Chrome TLS/i.test(msg)) {
-      throw new Error(
-        "Flipkart Minutes could not load on this server (TLS/network). Set BLINKIT_PROXY_URL to the home Impit tunnel."
-      );
-    }
-    // Location session may have expired — reset and retry once.
+  } catch {
     session.locationKey = "";
     await ensureLocation(lat, lng, pin, options);
     ({ data, text } = await romePost("/api/4/page/fetch?cacheFirst=false", {
@@ -436,7 +363,6 @@ export async function searchMinutes(query, lat, lng, options = {}) {
     data?.RESPONSE?.pageMeta?.redirectionObject?.redirectionAction?.url;
 
   if (redirect && /hyperlocal-preview/i.test(redirect)) {
-    // Force a fresh location bind, then retry search once.
     session.locationKey = "";
     await ensureLocation(lat, lng, pin, options);
     ({ data, text } = await romePost("/api/4/page/fetch?cacheFirst=false", {
@@ -469,19 +395,6 @@ export async function searchMinutes(query, lat, lng, options = {}) {
   mapNode(data?.RESPONSE || data, q, out, seen);
 
   if (!out.length) {
-    const stillPreview =
-      data?.RESPONSE?.pageMeta?.redirectionObject?.url ||
-      data?.RESPONSE?.pageMeta?.redirectionObject?.redirectionAction?.url;
-    if (stillPreview && /hyperlocal-preview/i.test(String(stillPreview))) {
-      throw new Error(
-        "Flipkart Minutes still needs a delivery pin. Try another nearby area."
-      );
-    }
-    if (/"serviceable"\s*:\s*false/i.test(text || "")) {
-      throw new Error(
-        "Flipkart Minutes is not serviceable at this pincode yet."
-      );
-    }
     throw new Error("Flipkart Minutes returned no products for this search.");
   }
 

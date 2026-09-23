@@ -70,7 +70,8 @@ Blinkit `products` should be non-empty.
 ## Endpoints
 
 - `GET /health`
-- `GET /search?q=&lat=&lng=` — header `x-compari5-proxy-secret: <secret>`
+- `GET /search?q=&lat=&lng=` — Blinkit products; header `x-compari5-proxy-secret: <secret>`
+- `GET /minutes?q=&lat=&lng=&postalCode=&label=&city=&locality=` — Flipkart Minutes products (same secret header)
 
 ## Render (optional / backup)
 

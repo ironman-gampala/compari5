@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "sync:zepto-auth": "node scripts/sync-zepto-auth.mjs"
+    "sync:zepto-auth": "node scripts/sync-zepto-auth.mjs",
+    "test:ui-layout": "node scripts/ui-layout-check.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
