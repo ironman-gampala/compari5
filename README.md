@@ -1,6 +1,6 @@
 # Compari5
 
-Personal India quick-commerce price compare for **Blinkit**, **Swiggy Instamart**, **Zepto**, **BigBasket**, and **FirstClub**.
+Personal India quick-commerce price compare for **Blinkit**, **Swiggy Instamart**, **Zepto**, **BigBasket**, and **Flipkart Minutes**.
 
 Live site: [https://compari5.netlify.app](https://compari5.netlify.app)
 
@@ -20,11 +20,16 @@ No checkout. Unofficial personal / play tool — not affiliated with any of the 
 
 - Instamart and Zepto use **shared server tokens** (one OTP login on the server for everyone visiting the live site).
 - Blinkit often works only on your laptop (see integrations below).
-- BigBasket usually works without login on both local and Netlify.
-- FirstClub ([firstclub.site](https://www.firstclub.site/)) is **app-only** for catalog (Bengaluru & Hyderabad). The fifth card stays for compare UX; prices need `FIRSTCLUB_SESSION_ID` + `FIRSTCLUB_USER_ID` if their login session ever works.
-- If Instamart/Zepto stop returning prices, re-auth on the **live** site (no redeploy):
+- BigBasket prefers **bbnow.bigbasket.com** (www listing is often Akamai-blocked).
+- Flipkart Minutes sets HYPERLOCAL location via `serviceability` → `location/update`, then searches.
+- Blinkit on Netlify needs the **home Impit proxy + Cloudflare tunnel** (`services/blinkit-proxy/start-home-tunnel.sh`). Render cloud IPs are 403’d.
+- If Instamart/Zepto stop returning prices:
   - Swiggy: [https://compari5.netlify.app/api/auth/swiggy](https://compari5.netlify.app/api/auth/swiggy)
-  - Zepto: [https://compari5.netlify.app/api/auth/zepto](https://compari5.netlify.app/api/auth/zepto)
+  - Zepto: OTP must run on **localhost** (Zepto rejects Netlify redirect URIs). Then sync tokens:
+    ```bash
+    npm run dev   # http://localhost:3000/api/auth/zepto → finish OTP
+    npm run sync:zepto-auth
+    ```
 
 ---
 
@@ -34,6 +39,7 @@ No checkout. Unofficial personal / play tool — not affiliated with any of the 
 
 - Node.js **20+**
 - npm
+- Google Chrome (optional; enables Zepto guest search when MCP is unsigned)
 
 No Python venv. Dependencies live in `node_modules` (gitignored).
 
@@ -69,7 +75,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Connect Swiggy / Zepto once via OTP if guest Instamart fails (tokens land in `.data/`, gitignored).
+Connect Swiggy / Zepto once via OTP if guest search fails (tokens land in `.data/`, gitignored).
 
 ---
 
@@ -89,12 +95,14 @@ Connect Swiggy / Zepto once via OTP if guest Instamart fails (tokens land in `.d
    |----------|---------|
 | `COMPARI5_BASE_URL` | `https://compari5.netlify.app` |
 | `GOOGLE_MAPS_API_KEY` | your key |
-| `BLINKIT_PROXY_URL` | `https://….onrender.com` |
-| `BLINKIT_PROXY_SECRET` | same secret as Render `BLINKIT_PROXY_SECRET` |
+| `BLINKIT_PROXY_URL` | `https://….trycloudflare.com` (home tunnel) |
+| `BLINKIT_PROXY_SECRET` | same secret as the home proxy |
 
 3. `netlify.toml` already uses `@netlify/plugin-nextjs`.
 
-4. After deploy, complete Swiggy/Zepto OTP on the **live** URLs above. Tokens are stored in **Netlify Blobs** and shared for all visitors.
+4. After deploy:
+   - Swiggy OTP on the live `/api/auth/swiggy` URL (tokens → Netlify Blobs).
+   - Zepto OTP on **localhost**, then `npm run sync:zepto-auth` to push `.data/` into Netlify Blobs.
 
 ---
 
@@ -110,6 +118,7 @@ Browser UI
        → Instamart adapter
        → Zepto adapter
        → BigBasket adapter
+       → Minutes adapter
   → JSON results (independent; one failure does not kill the rest)
 ```
 
@@ -121,7 +130,7 @@ Browser UI
 | **Auth** | No user login. Fetches a guest `auth_key`, then search. |
 | **HTTP** | Prefers **Impit** (Chrome-like TLS). Falls back to Undici if Impit is missing. |
 | **Local** | Usually **works** (Impit native binary on your Mac) without the proxy. |
-| **Netlify** | Must call `BLINKIT_PROXY_URL`. **Render cloud IPs are often 403’d by Blinkit** — run `services/blinkit-proxy` on your home Mac + Cloudflare tunnel and point Netlify there (see proxy README). |
+| **Netlify** | Must call `BLINKIT_PROXY_URL`. **Render cloud IPs are 403’d** — run `./start-home-tunnel.sh` in `services/blinkit-proxy`, set Netlify `BLINKIT_PROXY_URL` to the `trycloudflare.com` URL, redeploy. Keep Mac proxy+tunnel running. |
 
 Proxy code: `services/blinkit-proxy/` (see its README).
 
@@ -144,35 +153,39 @@ Code: `lib/platforms/instamart.js`, `lib/auth/mcp.js`, `app/api/auth/swiggy/*`
 
 | | |
 |--|--|
-| **Path** | **Zepto MCP only** (no guest web scrape in the happy path) |
-| **Auth** | Zepto MCP OAuth (phone OTP). Shared tokens on Netlify. |
+| **Path** | Prefer **Zepto MCP**; if unsigned / MCP fails, **Chrome guest search** (local only) |
+| **Auth** | Zepto MCP OAuth (phone OTP). Shared tokens on Netlify via Blobs sync. |
 | **MCP** | `https://mcp.zepto.co.in/mcp` |
+| **OAuth caveat** | Zepto only whitelists **localhost** redirect URIs (`domain_not_whitelisted` on Netlify). OTP at `http://localhost:3000/api/auth/zepto`, then `npm run sync:zepto-auth`. |
 | **Location** | `get_location_serviceability` → `select_store` → `search_products` |
-| **Local / Netlify** | Same flow; tokens in `.data/` vs Netlify Blobs. |
+| **Local** | MCP and/or headless Chrome guest scrape (`puppeteer-core`). |
+| **Netlify** | MCP tokens from Blobs only (no Chrome on Functions). |
 
-Code: `lib/platforms/zepto.js`, `lib/auth/mcp.js`, `app/api/auth/zepto/*`
+Code: `lib/platforms/zepto.js`, `lib/browser.js`, `lib/auth/mcp.js`, `app/api/auth/zepto/*`, `scripts/sync-zepto-auth.mjs`
 
 ### BigBasket
 
 | | |
 |--|--|
-| **Path** | Guest visit to bigbasket.com for cookies, then listing API |
+| **Path** | Guest cookies, then `listing-svc/v2/products` |
 | **Auth** | No user login |
+| **Host** | Tries **bbnow.bigbasket.com** first, then www (www is often Akamai 403) |
 | **Location** | Lat/lng + pin cookies; city/pin mapped to a warehouse `mid` |
-| **Local / Netlify** | Usually **works** both places |
+| **Local / Netlify** | Usually works when bbnow is reachable |
 
 Code: `lib/platforms/bigbasket.js`
 
-### FirstClub
+### Flipkart Minutes
 
 | | |
 |--|--|
-| **Path** | Heimdall browse API (`order.firstclub.co.in` / `prod-heimdall.firstclub.tech`) |
-| **Auth** | Optional `FIRSTCLUB_SESSION_ID` + `FIRSTCLUB_USER_ID` (guest browse is often blocked) |
-| **Location** | Serviceability by pin/lat-lng; default ClubHouse `FCHBLRSJR01` |
-| **Local / Netlify** | Soft-fails cleanly when their API is down or login-gated |
+| **Path** | Flipkart rome APIs with `marketplace=HYPERLOCAL` |
+| **Auth** | Guest cookies from flipkart.com |
+| **Location** | `serviceability` → `location/update` (address Confirm equivalent) → `page/fetch` search |
+| **Local / Netlify** | Soft-fails when not serviceable or Flipkart blocks |
 
-Code: `lib/platforms/firstclub.js`
+Code: `lib/platforms/minutes.js`  
+Spec: `docs/superpowers/specs/2026-09-23-flipkart-minutes-design.md`
 
 ---
 
@@ -184,9 +197,14 @@ app/                  # Next.js UI + API routes
   api/geocode/        # Google Places / Geocoding (+ Nominatim fallback)
   api/auth/           # Swiggy / Zepto OAuth start + callback
 lib/
-  platforms/          # blinkit, instamart, zepto, bigbasket, firstclub adapters
+  platforms/          # blinkit, instamart, zepto, bigbasket, minutes adapters
   auth/               # MCP OAuth + token store (file / Netlify Blobs)
+  browser.js          # Shared Chrome helper (Zepto guest)
   http.js             # Impit + Undici fetch helper
+scripts/
+  sync-zepto-auth.mjs # Push local Zepto tokens to Netlify Blobs
+services/blinkit-proxy/
+  start-home-tunnel.sh
 public/logos/         # Store icons
 netlify.toml          # Next.js on Netlify + COMPARI5_BASE_URL
 ```
@@ -200,6 +218,7 @@ netlify.toml          # Next.js on Netlify + COMPARI5_BASE_URL
 | `npm run dev` | Local Next.js |
 | `npm run build` | Production build |
 | `npm start` | Run production build locally |
+| `npm run sync:zepto-auth` | Push local Zepto OTP tokens to Netlify Blobs |
 | `npx netlify deploy --build --prod` | Deploy to Netlify |
 
 ---
@@ -214,4 +233,4 @@ netlify.toml          # Next.js on Netlify + COMPARI5_BASE_URL
 
 ## Disclaimer
 
-Unofficial. Not affiliated with Blinkit, Swiggy, Zepto, BigBasket, or FirstClub. Store APIs and MCPs can break or block without notice.
+Unofficial. Not affiliated with Blinkit, Swiggy, Zepto, BigBasket, or Flipkart. Store APIs and MCPs can break or block without notice.
