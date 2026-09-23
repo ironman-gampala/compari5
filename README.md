@@ -21,7 +21,7 @@ No checkout. Unofficial personal / play tool — not affiliated with any of the 
 - Instamart and Zepto use **shared server tokens** (one OTP login on the server for everyone visiting the live site).
 - Blinkit often works only on your laptop (see integrations below).
 - BigBasket prefers **bbnow.bigbasket.com** (www listing is often Akamai-blocked).
-- Flipkart Minutes sets HYPERLOCAL location via `serviceability` → `location/update`, then searches.
+- Flipkart Minutes sets HYPERLOCAL location via `serviceability` → `location/update`, then searches. On Netlify it uses the **same home Impit tunnel** as Blinkit.
 - Blinkit on Netlify needs the **home Impit proxy + Cloudflare tunnel** (`services/blinkit-proxy/start-home-tunnel.sh`). Render cloud IPs are 403’d.
 - If Instamart/Zepto stop returning prices:
   - Swiggy: [https://compari5.netlify.app/api/auth/swiggy](https://compari5.netlify.app/api/auth/swiggy)
@@ -182,7 +182,8 @@ Code: `lib/platforms/bigbasket.js`
 | **Path** | Flipkart rome APIs with `marketplace=HYPERLOCAL` |
 | **Auth** | Guest cookies from flipkart.com |
 | **Location** | `serviceability` → `location/update` (address Confirm equivalent) → `page/fetch` search |
-| **Local / Netlify** | Soft-fails when not serviceable or Flipkart blocks |
+| **Local** | Direct Impit to Flipkart rome APIs |
+| **Netlify** | Uses the same home Impit proxy as Blinkit (`BLINKIT_PROXY_URL` → `GET /minutes`) |
 
 Code: `lib/platforms/minutes.js`  
 Spec: `docs/superpowers/specs/2026-09-23-flipkart-minutes-design.md`

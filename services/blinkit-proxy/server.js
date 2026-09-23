@@ -1,6 +1,7 @@
 import { createServer } from "http";
 import { randomUUID } from "crypto";
 import { Impit } from "impit";
+import { searchMinutes } from "./minutes-search.js";
 
 const PORT = Number(process.env.PORT || 8080);
 const SECRET = process.env.BLINKIT_PROXY_SECRET || "";
@@ -199,6 +200,30 @@ const server = createServer(async (req, res) => {
         return;
       }
       const products = await searchBlinkit(q, lat, lng);
+      json(res, 200, { products });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/minutes") {
+      if (!requireSecret(req, res)) return;
+      const q = (url.searchParams.get("q") || "").trim();
+      const lat = Number(url.searchParams.get("lat"));
+      const lng = Number(url.searchParams.get("lng"));
+      if (q.length < 2) {
+        json(res, 400, { error: "q required" });
+        return;
+      }
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        json(res, 400, { error: "lat/lng required" });
+        return;
+      }
+      const products = await searchMinutes(q, lat, lng, {
+        label: url.searchParams.get("label") || "",
+        city: url.searchParams.get("city") || "",
+        postalCode: url.searchParams.get("postalCode") || "",
+        locality: url.searchParams.get("locality") || "",
+        state: url.searchParams.get("state") || "",
+      });
       json(res, 200, { products });
       return;
     }
