@@ -16,7 +16,20 @@ Impit alone is not enough in the cloud. Blinkit also blocks many **server/datace
 
 Run this proxy on the machine where Blinkit already works (your Mac), expose it with a tunnel, point Netlify at that URL.
 
-### 1. Start the proxy locally
+### 1. One-shot: proxy + Cloudflare tunnel
+
+Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/) (`brew install cloudflare/cloudflare/cloudflared`), then:
+
+```bash
+cd services/blinkit-proxy
+BLINKIT_PROXY_SECRET='your-long-secret' ./start-home-tunnel.sh
+```
+
+That starts `server.js` on `:8080` and runs `cloudflared tunnel --url http://127.0.0.1:8080`. Copy the `https://….trycloudflare.com` URL it prints.
+
+(Named Cloudflare Tunnel / Tailscale Funnel also work if you want a stable hostname.)
+
+### 2. Or start the proxy alone
 
 ```bash
 cd services/blinkit-proxy
@@ -34,19 +47,8 @@ curl -s 'http://127.0.0.1:8080/search?q=milk&lat=12.9352&lng=77.6245' \
 
 You should see products JSON (not 403).
 
-### 2. Expose it (Cloudflare quick tunnel)
-
-Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/), then:
-
-```bash
-cloudflared tunnel --url http://127.0.0.1:8080
-```
-
-Copy the `https://….trycloudflare.com` URL it prints.
-
-(Named Cloudflare Tunnel / Tailscale Funnel also work if you want a stable hostname.)
-
 ### 3. Point Netlify at your home proxy
+
 
 Netlify → Site settings → Environment variables:
 
