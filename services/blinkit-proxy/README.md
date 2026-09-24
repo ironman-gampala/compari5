@@ -16,18 +16,18 @@ Impit alone is not enough in the cloud. Blinkit also blocks many **server/datace
 
 Run this proxy on the machine where Blinkit already works (your Mac), expose it with a tunnel, point Netlify at that URL.
 
-### 1. One-shot: proxy + Cloudflare tunnel
-
-Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/) (`brew install cloudflare/cloudflare/cloudflared`), then:
+### 1. One-shot: proxy + tunnel
 
 ```bash
 cd services/blinkit-proxy
 BLINKIT_PROXY_SECRET='your-long-secret' ./start-home-tunnel.sh
 ```
 
-That starts `server.js` on `:8080` and runs `cloudflared tunnel --url http://127.0.0.1:8080`. Copy the `https://….trycloudflare.com` URL it prints.
+Starts `server.js` on `:8080` and a public tunnel (prefers **localhost.run** via SSH; Cloudflare quick tunnel as fallback).
 
-(Named Cloudflare Tunnel / Tailscale Funnel also work if you want a stable hostname.)
+Copy the printed `https://….lhr.life` URL into Netlify `BLINKIT_PROXY_URL` and redeploy if needed.
+
+**Keep that Mac process running.** Free tunnels expire — if Blinkit shows 503/530/`fetch failed`, re-run the script and update the Netlify URL.
 
 ### 2. Or start the proxy alone
 
