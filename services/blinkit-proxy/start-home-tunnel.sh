@@ -71,7 +71,7 @@ register_url() {
 
 start_tunnel() {
   [[ -n "${SSH_PID}" ]] && kill "$SSH_PID" 2>/dev/null || true
-  rm -f /tmp/compari5-lhr.log
+  rm -f /tmp/compari5-lhr.log; : > /tmp/compari5-lhr.log
   ssh -o StrictHostKeyChecking=accept-new \
     -o ServerAliveInterval=20 \
     -o ServerAliveCountMax=3 \
@@ -95,15 +95,17 @@ start_tunnel() {
     log "no tunnel URL from localhost.run"
     return 1
   fi
-  # Wait until health works through the tunnel
-  for _ in $(seq 1 20); do
-    if curl -fsS -m 8 "$url/health" | grep -q '"ok":true'; then
+  # Wait until THIS url is healthy (not a stale hostname)
+  for _ in $(seq 1 30); do
+    body=$(curl -fsS -m 8 "$url/health" 2>/dev/null || true)
+    if echo "$body" | grep -q '"ok":true'; then
       register_url "$url"
       return 0
     fi
+    # localhost.run sometimes prints URL before forward is ready
     sleep 2
   done
-  log "tunnel $url not healthy"
+  log "tunnel $url not healthy (last body: ${body:-empty})"
   return 1
 }
 
@@ -116,7 +118,11 @@ tunnel_ok() {
 
 log "watchdog starting (site=$SITE port=$PORT)"
 ensure_proxy
-start_tunnel || log "initial tunnel start failed — will retry"
+if tunnel_ok; then
+  log "existing tunnel healthy: $(cat "$URL_FILE" 2>/dev/null || true)"
+else
+  start_tunnel || log "initial tunnel start failed — will retry"
+fi
 
 while true; do
   ensure_proxy || true
