@@ -1,73 +1,26 @@
-# Compari5 Blinkit proxy
+# Compari5 Blinkit proxy (personal / optional)
 
-Small Node service that calls Blinkit / Flipkart Minutes with **Impit** (Chrome TLS). Netlify Functions cannot do Impit, so the live site must call this proxy on your home IP.
+Small Node Impit service for Blinkit + Flipkart Minutes.
 
-## Why Netlify fails without a home tunnel
+**Do not run this tunnel from a work laptop.** Corporate security tools often flag reverse tunnels (`localhost.run`, cloudflared). Prefer:
 
-| Where | Result |
-|--|--|
-| Your Mac (local Compari5) | Works |
-| Netlify / Render / other cloud IPs | Blinkit often **403** |
+1. `npm run dev` locally (no tunnel), or
+2. `RESIDENTIAL_PROXY_URL` on Netlify (residential HTTP proxy)
 
-## Self-healing setup (recommended)
+## When to use this folder
 
-Free tunnels (`localhost.run`) die often. The watchdog restarts them and **registers the new URL on the live site** (`PUT /api/proxy-url` → Netlify Blobs), so you usually **do not need a redeploy**.
+Only on a **personal** machine (home Pi / personal Mac) with:
 
 ```bash
-cd services/blinkit-proxy
-BLINKIT_PROXY_SECRET='your-long-secret' ./start-home-tunnel.sh
+ENABLE_HOME_PROXY=1
+BLINKIT_PROXY_SECRET='…'
+./start-home-tunnel.sh
 ```
 
-Or from repo root:
-
-```bash
-BLINKIT_PROXY_SECRET='your-long-secret' npm run proxy:tunnel
-```
-
-**Leave that process running** (terminal, `tmux`, or `launchd`). It will:
-
-1. Start `server.js` on `:8080`
-2. Open a localhost.run tunnel
-3. Register `https://….lhr.life` via `PUT https://compari5.netlify.app/api/proxy-url`
-4. Re-check health every ~20s and restart if the tunnel dies
-
-### Netlify env
-
-| Key | Value |
-|--|--|
-| `BLINKIT_PROXY_SECRET` | same secret as local (**required**) |
-| `BLINKIT_PROXY_URL` | optional fallback if Blobs is empty |
-| `COMPARI5_BASE_URL` | `https://compari5.netlify.app` |
-
-### Verify
-
-```bash
-curl -s 'https://compari5.netlify.app/api/search?q=milk&lat=12.9352&lng=77.6245&platform=blinkit'
-```
-
-Blinkit `products` should be non-empty.
-
-## Proxy-only (no tunnel)
-
-```bash
-cd services/blinkit-proxy
-npm install
-BLINKIT_PROXY_SECRET='your-long-secret' npm start
-```
-
-```bash
-curl -s 'http://127.0.0.1:8080/health'
-curl -s 'http://127.0.0.1:8080/search?q=milk&lat=12.9352&lng=77.6245' \
-  -H "x-compari5-proxy-secret: your-long-secret"
-```
+Netlify must also have `ENABLE_HOME_PROXY=1` for the live site to call this proxy.
 
 ## Endpoints
 
 - `GET /health`
-- `GET /search?q=&lat=&lng=` — Blinkit; header `x-compari5-proxy-secret`
-- `GET /minutes?q=&lat=&lng=&postalCode=&…` — Flipkart Minutes; same secret
-
-Live site:
-
-- `PUT /api/proxy-url` `{ "url": "https://….lhr.life" }` with `x-compari5-proxy-secret`
-- `GET /api/proxy-url` (same secret) — see registered URL
+- `GET /search?q=&lat=&lng=`
+- `GET /minutes?q=&lat=&lng=&postalCode=&…`

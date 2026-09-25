@@ -99,18 +99,9 @@ HTTP helper: `lib/http.js` — prefers **Impit** (Chrome-like TLS), falls back t
 | Environment | Path |
 |-------------|------|
 | Mac / local | Direct Impit to Blinkit — usually works |
-| Netlify | Must use `BLINKIT_PROXY_URL` → home proxy `GET /search` |
+| Netlify | Set **`RESIDENTIAL_PROXY_URL`** (residential HTTP proxy). Without it, column shows “not available on cloud”. |
 
-Blinkit blocks many **datacenter IPs** (Render included). Fix: run Impit on your home machine and expose with Cloudflare tunnel:
-
-```bash
-cd services/blinkit-proxy
-BLINKIT_PROXY_SECRET='…' ./start-home-tunnel.sh
-```
-
-Set Netlify `BLINKIT_PROXY_URL` + `BLINKIT_PROXY_SECRET`, keep Mac + tunnel up while using the live site.
-
-Proxy also serves Minutes (`GET /minutes`) on the same tunnel.
+Blinkit blocks datacenter IPs. Prefer a paid residential proxy on Netlify — **not** a reverse tunnel from a work laptop. Optional personal-home tunnel remains behind `ENABLE_HOME_PROXY=1` only.
 
 ---
 
@@ -208,9 +199,9 @@ Needs a real **6-digit postal code**. If pin enrichment fails, UI shows: *“Fli
 | Environment | Path |
 |-------------|------|
 | Local | Direct Impit to `*.rome.api.flipkart.com` |
-| Netlify | Same home tunnel as Blinkit → `GET {BLINKIT_PROXY_URL}/minutes?...` |
+| Netlify | Same as Blinkit: **`RESIDENTIAL_PROXY_URL`**, or clear unavailable message |
 
-TLS / bot checks on Netlify Functions are unreliable against Flipkart; Impit on a residential IP works better.
+Impit through a residential IP works better than bare Netlify egress.
 
 ---
 
@@ -231,8 +222,9 @@ TLS / bot checks on Netlify Functions are unreliable against Flipkart; Impit on 
 |----------|---------|
 | `GOOGLE_MAPS_API_KEY` | Geocode / Places / reverse pin |
 | `COMPARI5_BASE_URL` | OAuth redirect base |
-| `BLINKIT_PROXY_URL` | Blinkit + Minutes on Netlify |
-| `BLINKIT_PROXY_SECRET` | Proxy auth header |
+| `RESIDENTIAL_PROXY_URL` | Blinkit + Minutes egress on Netlify (residential HTTP proxy) |
+| `ENABLE_HOME_PROXY` | Opt-in personal home tunnel only (`1` / `true`) |
+| `BLINKIT_PROXY_URL` / `SECRET` | Only with `ENABLE_HOME_PROXY` |
 | `USE_NETLIFY_BLOBS` | Force Blobs token store locally |
 
 ---
@@ -241,8 +233,8 @@ TLS / bot checks on Netlify Functions are unreliable against Flipkart; Impit on 
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Blinkit `fetch failed` / 403 on Netlify | Tunnel down or datacenter IP | Start `start-home-tunnel.sh`, refresh `BLINKIT_PROXY_URL` |
-| Minutes “needs a delivery pin” | Places omitted pin | Try denser address; check Geocoding key |
+| Blinkit / Minutes “not available on live cloud” | No residential proxy on Netlify | Set `RESIDENTIAL_PROXY_URL`, or use `npm run dev` |
+| Blinkit 403 | Datacenter IP | Residential proxy or local Impit |
 | Instamart empty | Guest blocked + no MCP token | OTP at `/api/auth/swiggy` |
 | Zepto empty on Netlify | No synced tokens | Local OTP + `npm run sync:zepto-auth` |
 | BigBasket empty | Akamai / host | Confirm bbnow path; retry |

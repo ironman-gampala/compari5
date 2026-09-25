@@ -96,8 +96,7 @@ Open [http://localhost:3000](http://localhost:3000).
 |----------|---------|
 | `COMPARI5_BASE_URL` | `https://compari5.netlify.app` |
 | `GOOGLE_MAPS_API_KEY` | Places + Geocoding |
-| `BLINKIT_PROXY_URL` | Home Impit tunnel (`https://….trycloudflare.com`) |
-| `BLINKIT_PROXY_SECRET` | Same secret as the home proxy |
+| `RESIDENTIAL_PROXY_URL` | Optional. Residential HTTP proxy so Blinkit / Minutes work on Netlify (`http://user:pass@host:port`) |
 
 ```bash
 npx netlify deploy --build --prod
@@ -110,9 +109,9 @@ npx netlify deploy --build --prod
   ```bash
   npm run sync:zepto-auth
   ```
-- **Blinkit / Minutes on Netlify:** keep the home proxy + Cloudflare tunnel running (`services/blinkit-proxy/start-home-tunnel.sh`). Cloud IPs are often blocked.
+- **Blinkit / Minutes:** work with `npm run dev` locally. On Netlify they need `RESIDENTIAL_PROXY_URL` (datacenter IPs are blocked). Do **not** run home reverse tunnels from a work laptop.
 
-Details: [IMPLEMENTATION.md](./IMPLEMENTATION.md) and `services/blinkit-proxy/README.md`.
+Details: [IMPLEMENTATION.md](./IMPLEMENTATION.md).
 
 ---
 
