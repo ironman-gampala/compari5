@@ -68,11 +68,14 @@ function openProduct(url, name, platform) {
 
 function friendlyPlatformError(message) {
   const msg = String(message || "");
+  if (/RESIDENTIAL_PROXY_URL|residential proxy|not available on the live cloud/i.test(msg)) {
+    return msg.length > 200 ? `${msg.slice(0, 197)}...` : msg;
+  }
   if (/impit|native bindings|Chrome TLS/i.test(msg)) {
     return "Blinkit could not load on this server yet. Other stores should still work.";
   }
   if (/Blinkit blocked|auth_key failed/i.test(msg)) {
-    return "Blinkit blocked this server request. Try again shortly.";
+    return "Blinkit blocked this server request. Try a residential proxy or run locally.";
   }
   if (/not signed in|not connected|Sign in|session expired|MCP 401|phone OTP/i.test(msg)) {
     return msg;
