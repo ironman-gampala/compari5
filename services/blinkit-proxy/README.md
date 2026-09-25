@@ -1,65 +1,45 @@
 # Compari5 Blinkit proxy
 
-Small Node service that calls Blinkit with **Impit** (Chrome TLS). Netlify Functions cannot do Impit, so the live site must call this proxy.
+Small Node service that calls Blinkit / Flipkart Minutes with **Impit** (Chrome TLS). Netlify Functions cannot do Impit, so the live site must call this proxy on your home IP.
 
-## Why Netlify fails today
+## Why Netlify fails without a home tunnel
 
 | Where | Result |
 |--|--|
 | Your Mac (local Compari5) | Works |
-| Render proxy (`compari5.onrender.com`) | Health OK, Blinkit **403** (datacenter IP blocked) |
-| Netlify → Render → Blinkit | Same **403** |
+| Netlify / Render / other cloud IPs | Blinkit often **403** |
 
-Impit alone is not enough in the cloud. Blinkit also blocks many **server/datacenter IPs**. Your home IP is allowed; Render’s is not.
+## Self-healing setup (recommended)
 
-## Fix that works: home proxy + tunnel
-
-Run this proxy on the machine where Blinkit already works (your Mac), expose it with a tunnel, point Netlify at that URL.
-
-### 1. One-shot: proxy + tunnel
+Free tunnels (`localhost.run`) die often. The watchdog restarts them and **registers the new URL on the live site** (`PUT /api/proxy-url` → Netlify Blobs), so you usually **do not need a redeploy**.
 
 ```bash
 cd services/blinkit-proxy
 BLINKIT_PROXY_SECRET='your-long-secret' ./start-home-tunnel.sh
 ```
 
-Starts `server.js` on `:8080` and a public tunnel (prefers **localhost.run** via SSH; Cloudflare quick tunnel as fallback).
-
-Copy the printed `https://….lhr.life` URL into Netlify `BLINKIT_PROXY_URL` and redeploy if needed.
-
-**Keep that Mac process running.** Free tunnels expire — if Blinkit shows 503/530/`fetch failed`, re-run the script and update the Netlify URL.
-
-### 2. Or start the proxy alone
+Or from repo root:
 
 ```bash
-cd services/blinkit-proxy
-npm install
-BLINKIT_PROXY_SECRET='your-long-secret' npm start
+BLINKIT_PROXY_SECRET='your-long-secret' npm run proxy:tunnel
 ```
 
-Smoke-test:
+**Leave that process running** (terminal, `tmux`, or `launchd`). It will:
 
-```bash
-curl -s 'http://127.0.0.1:8080/health'
-curl -s 'http://127.0.0.1:8080/search?q=milk&lat=12.9352&lng=77.6245' \
-  -H "x-compari5-proxy-secret: your-long-secret"
-```
+1. Start `server.js` on `:8080`
+2. Open a localhost.run tunnel
+3. Register `https://….lhr.life` via `PUT https://compari5.netlify.app/api/proxy-url`
+4. Re-check health every ~20s and restart if the tunnel dies
 
-You should see products JSON (not 403).
-
-### 3. Point Netlify at your home proxy
-
-
-Netlify → Site settings → Environment variables:
+### Netlify env
 
 | Key | Value |
 |--|--|
-| `BLINKIT_PROXY_URL` | `https://….trycloudflare.com` (no trailing slash) |
-| `BLINKIT_PROXY_SECRET` | same secret as local |
+| `BLINKIT_PROXY_SECRET` | same secret as local (**required**) |
+| `BLINKIT_PROXY_URL` | optional fallback if Blobs is empty |
+| `COMPARI5_BASE_URL` | `https://compari5.netlify.app` |
 
-Redeploy the site (or trigger a clear-cache deploy). Keep the Mac proxy + tunnel running while you use Compari5 on Netlify.
-
-### 4. Verify
+### Verify
 
 ```bash
 curl -s 'https://compari5.netlify.app/api/search?q=milk&lat=12.9352&lng=77.6245&platform=blinkit'
@@ -67,22 +47,27 @@ curl -s 'https://compari5.netlify.app/api/search?q=milk&lat=12.9352&lng=77.6245&
 
 Blinkit `products` should be non-empty.
 
+## Proxy-only (no tunnel)
+
+```bash
+cd services/blinkit-proxy
+npm install
+BLINKIT_PROXY_SECRET='your-long-secret' npm start
+```
+
+```bash
+curl -s 'http://127.0.0.1:8080/health'
+curl -s 'http://127.0.0.1:8080/search?q=milk&lat=12.9352&lng=77.6245' \
+  -H "x-compari5-proxy-secret: your-long-secret"
+```
+
 ## Endpoints
 
 - `GET /health`
-- `GET /search?q=&lat=&lng=` — Blinkit products; header `x-compari5-proxy-secret: <secret>`
-- `GET /minutes?q=&lat=&lng=&postalCode=&label=&city=&locality=` — Flipkart Minutes products (same secret header)
+- `GET /search?q=&lat=&lng=` — Blinkit; header `x-compari5-proxy-secret`
+- `GET /minutes?q=&lat=&lng=&postalCode=&…` — Flipkart Minutes; same secret
 
-## Render (optional / backup)
+Live site:
 
-Render free tier is fine for `/health`, but Blinkit often still **403**s from Render IPs. Prefer the home tunnel for real prices.
-
-If you still use Render:
-
-1. Root Directory: `services/blinkit-proxy`
-2. Runtime: Docker
-3. Env: `BLINKIT_PROXY_SECRET`
-
-## Paid alternative
-
-A residential-IP proxy provider in front of Blinkit (or hosting this service on a residential exit) can work 24/7 without your Mac. Free cloud VMs usually will not.
+- `PUT /api/proxy-url` `{ "url": "https://….lhr.life" }` with `x-compari5-proxy-secret`
+- `GET /api/proxy-url` (same secret) — see registered URL

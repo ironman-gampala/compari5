@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "sync:zepto-auth": "node scripts/sync-zepto-auth.mjs",
-    "test:ui-layout": "node scripts/ui-layout-check.mjs"
+    "test:ui-layout": "node scripts/ui-layout-check.mjs",
+    "proxy:tunnel": "bash services/blinkit-proxy/start-home-tunnel.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
